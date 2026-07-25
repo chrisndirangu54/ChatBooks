@@ -3,7 +3,6 @@
 import {
   Bar,
   BarChart,
-  CartesianGrid,
   LabelList,
   ResponsiveContainer,
   Tooltip,
@@ -46,6 +45,14 @@ export function CategoryBars({
   // one-category chart from collapsing to a sliver.
   const height = Math.max(140, data.length * 34 + 24);
 
+  // Size the label gutter to the longest name actually present, rather than
+  // trusting a fixed width — "telecommunications" gets its first characters
+  // sliced off at 96px. Anything past the cap is ellipsised, so a label is
+  // either fully readable or visibly shortened, never half-cropped.
+  const longest = data.reduce((max, slice) => Math.max(max, slice.category.length), 0);
+  const axisWidth = Math.min(150, Math.max(80, longest * 7 + 14));
+  const maxChars = Math.floor((axisWidth - 14) / 7);
+
   return (
     <ChartCard
       title={title}
@@ -75,18 +82,23 @@ export function CategoryBars({
               margin={{ top: 0, right: 56, left: 0, bottom: 0 }}
               barCategoryGap="30%"
             >
-              <CartesianGrid strokeDasharray="" horizontal={false} stroke={VIZ.grid} />
+              {/* No gridlines: every bar is already labelled at its tip, and
+                  there's no visible x-axis to read a gridline against, so they'd
+                  be ink that carries nothing. */}
               <XAxis type="number" hide />
               <YAxis
                 type="category"
                 dataKey="category"
                 tickLine={false}
                 axisLine={false}
-                width={96}
+                width={axisWidth}
                 tick={{ fontSize: 12, fill: VIZ.inkSecondary }}
                 // Capitalised here rather than with a CSS text-transform, which
                 // recharts' tick props don't carry through to the SVG text.
-                tickFormatter={(value: string) => value.charAt(0).toUpperCase() + value.slice(1)}
+                tickFormatter={(value: string) => {
+                  const label = value.charAt(0).toUpperCase() + value.slice(1);
+                  return label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label;
+                }}
               />
               <Tooltip
                 cursor={{ fill: VIZ.grid, fillOpacity: 0.7 }}
