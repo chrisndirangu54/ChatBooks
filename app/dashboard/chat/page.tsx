@@ -137,6 +137,7 @@ export default function ChatPage() {
 
   const handleConfirm = async (parsed: ParsedTransaction, editId?: string, receiptUrl?: string) => {
     if (!user) return;
+    // eslint-disable-next-line react-hooks/purity -- event handler, not render; Date.now() here is a false positive (handleSend has the same pattern and isn't flagged)
     const savedAt = Date.now();
     if (editId) {
       await updateTransaction(user.uid, editId, {
@@ -190,6 +191,7 @@ export default function ChatPage() {
         {messages.map((message) => (
           <ChatBubble key={message.id} from={message.from}>
             {message.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- local blob: preview URL, not an optimizable remote asset
               <img src={message.imageUrl} alt="Receipt" className="mb-1 max-w-[200px] rounded-lg" />
             )}
             {message.text && <span className="whitespace-pre-line">{message.text}</span>}
