@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MessageSquare, Sparkles, Wifi, WifiOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useDashboard } from "@/lib/dashboard-context";
 import { updateBusinessProfile } from "@/lib/data/business";
 import { seedDemoData } from "@/lib/data/seed";
+import { checkWhatsAppStatus } from "@/lib/whatsapp";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import type { BusinessProfile } from "@/types";
@@ -16,6 +17,12 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const { profile, transactions, refreshProfile } = useDashboard();
   const [seeding, setSeeding] = useState(false);
+  const [waStatus, setWaStatus] = useState<{
+    reachable: boolean;
+    connected: boolean;
+    deviceId?: string;
+  } | null>(null);
+  const [waChecking, setWaChecking] = useState(false);
 
   const handleSeed = async () => {
     if (!user) return;
@@ -26,6 +33,21 @@ export default function SettingsPage() {
       setSeeding(false);
     }
   };
+
+  const checkWA = async () => {
+    setWaChecking(true);
+    try {
+      const status = await checkWhatsAppStatus();
+      setWaStatus(status);
+    } finally {
+      setWaChecking(false);
+    }
+  };
+
+  // Auto-check on mount
+  useEffect(() => {
+    checkWA();
+  }, []);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -40,6 +62,74 @@ export default function SettingsPage() {
           Loading profile…
         </div>
       )}
+
+      {/* WhatsApp Integration Panel */}
+      <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-100">
+        <div className="flex items-center gap-2">
+          <MessageSquare size={18} className="text-emerald-600" />
+          <h2 className="text-sm font-semibold text-slate-900">WhatsApp Integration</h2>
+          {waStatus !== null && (
+            <span
+              className={`ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                waStatus.connected
+                  ? "bg-emerald-50 text-emerald-700"
+                  : waStatus.reachable
+                  ? "bg-amber-50 text-amber-700"
+                  : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {waStatus.connected ? (
+                <>
+                  <Wifi size={11} /> Connected
+                </>
+              ) : waStatus.reachable ? (
+                <>
+                  <WifiOff size={11} /> Server reachable, no device logged in
+                </>
+              ) : (
+                <>
+                  <WifiOff size={11} /> Offline
+                </>
+              )}
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Link ChatBooks to your Go WhatsApp Web server so messages and receipts sent
+          on WhatsApp are saved here instantly.
+        </p>
+
+        {waStatus?.connected && waStatus.deviceId && (
+          <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
+            ✅ Device <span className="font-mono font-semibold">{waStatus.deviceId}</span> is active.
+            Incoming WhatsApp chats are reflected here in real-time.
+          </div>
+        )}
+
+        <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+          <p className="font-medium text-slate-700">Webhook endpoint (set this in Go WhatsApp):</p>
+          <code className="block rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono text-slate-800 break-all">
+            {typeof window !== "undefined" ? window.location.origin : "http://localhost:3001"}
+            /api/webhook/whatsapp
+          </code>
+          <p className="text-xs text-slate-500">
+            In your <code className="bg-slate-100 px-1 rounded">.env</code> file on the Go WhatsApp server, set:
+          </p>
+          <pre className="rounded-lg bg-slate-100 p-3 text-xs text-slate-700 overflow-x-auto">
+{`WHATSAPP_CHATBOOKS_ENABLED=true
+WHATSAPP_CHATBOOKS_WEBHOOK_URL=http://localhost:3001/api/webhook/whatsapp`}
+          </pre>
+        </div>
+
+        <Button
+          onClick={checkWA}
+          disabled={waChecking}
+          variant="secondary"
+          className="mt-4"
+        >
+          {waChecking ? "Checking…" : "Refresh connection status"}
+        </Button>
+      </div>
 
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-100">
         <div className="flex items-center gap-2">
@@ -62,6 +152,8 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+
 
 function BusinessProfileForm({
   profile,

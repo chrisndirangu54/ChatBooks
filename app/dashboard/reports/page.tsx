@@ -2,10 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { subDays, subMonths } from "date-fns";
-import { Download, ShieldCheck } from "lucide-react";
+import { Download, MessageCircle, ShieldCheck } from "lucide-react";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatCurrency, summarizeTotals } from "@/lib/utils";
+import { sendWhatsAppReport } from "@/lib/whatsapp";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Input, Label } from "@/components/ui/Input";
 import type { Transaction } from "@/types";
 
 type Period = "week" | "month" | "all";
@@ -61,11 +64,21 @@ export default function ReportsPage() {
   const { profile, transactions } = useDashboard();
   const currency = profile?.currency || "USD";
   const [period, setPeriod] = useState<Period>("week");
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
 
   const scoped = useMemo(() => filterByPeriod(transactions, period), [transactions, period]);
   const { sales, expenses, profit } = summarizeTotals(scoped);
   const breakdown = categoryBreakdown(scoped);
   const readiness = loanReadinessScore(transactions);
+
+  const periodLabel = period === "week" ? "This week" : period === "month" ? "This month" : "All time";
+  const reportSummary = [
+    `📊 ${profile?.businessName || "ChatBooks"} — ${periodLabel}`,
+    `Sales: ${formatCurrency(sales, currency)}`,
+    `Expenses: ${formatCurrency(expenses, currency)}`,
+    `Profit: ${formatCurrency(profit, currency)}`,
+    `Loan-readiness: ${readiness.label} (${readiness.score}/100)`,
+  ].join("\n");
 
   const handleExport = async () => {
     const { jsPDF } = await import("jspdf");
@@ -123,9 +136,14 @@ export default function ReportsPage() {
             </button>
           ))}
         </div>
-        <Button onClick={handleExport}>
-          <Download size={16} /> Export PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={() => setWhatsappModalOpen(true)}>
+            <MessageCircle size={16} /> Send to WhatsApp
+          </Button>
+          <Button onClick={handleExport}>
+            <Download size={16} /> Export PDF
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -174,6 +192,70 @@ export default function ReportsPage() {
           </ul>
         </div>
       </div>
+
+      <SendToWhatsAppModal
+        open={whatsappModalOpen}
+        onClose={() => setWhatsappModalOpen(false)}
+        message={reportSummary}
+      />
     </div>
+  );
+}
+
+function SendToWhatsAppModal({
+  open,
+  onClose,
+  message,
+}: {
+  open: boolean;
+  onClose: () => void;
+  message: string;
+}) {
+  const [phone, setPhone] = useState("");
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
+
+  const handleSend = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSending(true);
+    setStatus("idle");
+    try {
+      const ok = await sendWhatsAppReport(phone, message);
+      setStatus(ok ? "sent" : "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Send report to WhatsApp">
+      <form onSubmit={handleSend} className="space-y-3.5">
+        <div>
+          <Label htmlFor="whatsapp-phone">WhatsApp number</Label>
+          <Input
+            id="whatsapp-phone"
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="254700000000"
+          />
+        </div>
+        <pre className="whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{message}</pre>
+        {status === "sent" && <p className="text-sm text-emerald-600">Sent ✅</p>}
+        {status === "error" && (
+          <p className="text-sm text-red-600">
+            Couldn&apos;t reach the WhatsApp server. Check it&apos;s running and connected in Settings.
+          </p>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Button type="submit" disabled={sending} className="flex-1">
+            {sending ? "Sending…" : "Send"}
+          </Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
