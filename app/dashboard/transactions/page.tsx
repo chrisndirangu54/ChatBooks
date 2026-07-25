@@ -118,7 +118,11 @@ export default function TransactionsPage() {
                   <Badge tone="neutral">{t.source === "chat" ? "WhatsApp" : t.source === "receipt" ? "Receipt" : "Manual"}</Badge>
                 </td>
                 <td className="px-5 py-3.5 text-slate-500">{timeAgo(t.createdAt)}</td>
-                <td className={`px-5 py-3.5 text-right font-semibold ${t.type === "sale" ? "text-emerald-600" : "text-red-600"}`}>
+                <td
+                  className={`px-5 py-3.5 text-right font-semibold tabular-nums ${
+                    t.type === "sale" ? "text-emerald-700" : "text-red-700"
+                  }`}
+                >
                   {t.type === "sale" ? "+" : "-"}
                   {formatCurrency(t.amount, currency)}
                 </td>

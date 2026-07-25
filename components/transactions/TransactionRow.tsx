@@ -21,10 +21,10 @@ export function TransactionRow({
   const isSale = transaction.type === "sale";
 
   return (
-    <div className="flex items-center gap-4 border-b border-slate-100 py-3.5 last:border-0">
+    <div className="group flex items-center gap-4 border-b border-slate-100 py-3.5 transition-colors last:border-0 hover:bg-slate-50/60">
       <div
-        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
-          isSale ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-transform group-hover:scale-105 ${
+          isSale ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
         }`}
       >
         {isSale ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
@@ -44,7 +44,9 @@ export function TransactionRow({
         </div>
       </div>
 
-      <p className={`flex-shrink-0 text-sm font-semibold ${isSale ? "text-emerald-600" : "text-red-600"}`}>
+      {/* 700 rather than 600: emerald-600 is 3.77:1 on white, which misses WCAG
+          4.5 for text this size. The chart marks keep the 600s. */}
+      <p className={`flex-shrink-0 text-sm font-semibold ${isSale ? "text-emerald-700" : "text-red-700"}`}>
         {isSale ? "+" : "-"}
         {formatCurrency(transaction.amount, currency)}
       </p>

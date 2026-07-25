@@ -2,13 +2,40 @@
 
 import { useMemo, useState } from "react";
 import { subDays, subMonths } from "date-fns";
-import { Download, ShieldCheck } from "lucide-react";
+import { Download, ShieldCheck, TrendingUp, TrendingDown, Wallet, Percent } from "lucide-react";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatCurrency, summarizeTotals } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { Meter, type StatusKey } from "@/components/ui/Meter";
+import { Reveal } from "@/components/ui/Reveal";
+import { ScoreRing } from "@/components/charts/ScoreRing";
+import { TrendChart } from "@/components/charts/TrendChart";
+import { CategoryBars } from "@/components/charts/CategoryBars";
+import { CumulativeProfitChart } from "@/components/charts/CumulativeProfitChart";
+import { SourceMixBar } from "@/components/charts/SourceMixBar";
+import { WeekdayHeatmap } from "@/components/charts/WeekdayHeatmap";
+import {
+  buildCumulative,
+  buildSalesHeatmap,
+  buildScopedSeries,
+  categoryTotals,
+  historySpanDays,
+  profitMargin,
+  sourceMix,
+  VIZ,
+} from "@/lib/viz";
 import type { Transaction } from "@/types";
 
 type Period = "week" | "month" | "all";
+
+const HEATMAP_WEEKS = 4;
+
+const PERIODS: Array<[Period, string]> = [
+  ["week", "This week"],
+  ["month", "This month"],
+  ["all", "All time"],
+];
 
 function filterByPeriod(transactions: Transaction[], period: Period): Transaction[] {
   if (period === "all") return transactions;
@@ -16,44 +43,73 @@ function filterByPeriod(transactions: Transaction[], period: Period): Transactio
   return transactions.filter((t) => t.createdAt >= cutoff);
 }
 
-function categoryBreakdown(transactions: Transaction[]) {
-  const map = new Map<string, number>();
-  transactions.forEach((t) => {
-    const signed = t.type === "sale" ? t.amount : -t.amount;
-    map.set(t.category, (map.get(t.category) || 0) + signed);
-  });
-  return Array.from(map.entries()).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+interface Readiness {
+  score: number;
+  label: string;
+  status: StatusKey;
+  factors: Array<{ label: string; earned: number; possible: number; met: boolean; note: string }>;
 }
 
-function loanReadinessScore(transactions: Transaction[]): { score: number; label: string; reasons: string[] } {
-  const reasons: string[] = [];
-  let score = 40;
-
-  if (transactions.length >= 10) {
-    score += 20;
-    reasons.push("You have a healthy transaction history.");
-  } else {
-    reasons.push("Log more transactions to strengthen your history.");
-  }
-
+/**
+ * Loan-readiness, broken into the factors that produced it.
+ *
+ * The single score is the headline, but a lender-facing number that won't say
+ * *why* isn't actionable — so each factor carries its own earned/possible pair
+ * and gets its own meter below the ring.
+ */
+function loanReadiness(transactions: Transaction[]): Readiness {
   const { profit } = summarizeTotals(transactions);
-  if (profit > 0) {
-    score += 25;
-    reasons.push("Your business is currently profitable.");
-  } else {
-    reasons.push("Work towards a positive profit margin.");
-  }
+  const hasHistory = transactions.length >= 10;
+  const isProfitable = profit > 0;
+  const manualShare =
+    transactions.filter((t) => t.source === "manual").length / Math.max(transactions.length, 1);
+  const mostlyLive = manualShare < 0.5;
 
-  const manualShare = transactions.filter((t) => t.source === "manual").length / Math.max(transactions.length, 1);
-  if (manualShare < 0.5) {
-    score += 15;
-    reasons.push("Most records come from real-time logging, not manual backfill.");
-  }
+  const factors = [
+    {
+      label: "Record-keeping baseline",
+      earned: 40,
+      possible: 40,
+      met: true,
+      note: "Awarded for keeping books at all.",
+    },
+    {
+      label: "Transaction history",
+      earned: hasHistory ? 20 : 0,
+      possible: 20,
+      met: hasHistory,
+      note: hasHistory
+        ? `${transactions.length} records on file.`
+        : `${transactions.length} of 10 records needed.`,
+    },
+    {
+      label: "Profitability",
+      earned: isProfitable ? 25 : 0,
+      possible: 25,
+      met: isProfitable,
+      note: isProfitable ? "Currently trading at a profit." : "Currently spending more than you earn.",
+    },
+    {
+      label: "Logged as it happened",
+      earned: mostlyLive ? 15 : 0,
+      possible: 15,
+      met: mostlyLive,
+      note: mostlyLive
+        ? `Only ${Math.round(manualShare * 100)}% typed in after the fact.`
+        : `${Math.round(manualShare * 100)}% typed in after the fact.`,
+    },
+  ];
+
+  const score = Math.min(
+    100,
+    factors.reduce((sum, factor) => sum + factor.earned, 0),
+  );
 
   return {
-    score: Math.min(score, 100),
+    score,
     label: score >= 75 ? "Loan-ready" : score >= 50 ? "Almost there" : "Needs more history",
-    reasons,
+    status: score >= 75 ? "good" : score >= 50 ? "warning" : "serious",
+    factors,
   };
 }
 
@@ -62,10 +118,41 @@ export default function ReportsPage() {
   const currency = profile?.currency || "USD";
   const [period, setPeriod] = useState<Period>("week");
 
-  const scoped = useMemo(() => filterByPeriod(transactions, period), [transactions, period]);
-  const { sales, expenses, profit } = summarizeTotals(scoped);
-  const breakdown = categoryBreakdown(scoped);
-  const readiness = loanReadinessScore(transactions);
+  const periodLabel = PERIODS.find(([value]) => value === period)?.[1] ?? "This week";
+
+  // "All time" spans however long this business has been logging — deriving it
+  // from the oldest record keeps the chart from padding out a year of empty
+  // weeks in front of a book that's three days old.
+  const periodDays = useMemo(() => {
+    if (period === "week") return 7;
+    if (period === "month") return 30;
+    return historySpanDays(transactions);
+  }, [period, transactions]);
+
+  const report = useMemo(() => {
+    const scoped = filterByPeriod(transactions, period);
+    const totals = summarizeTotals(scoped);
+    const series = buildScopedSeries(scoped, periodDays);
+
+    return {
+      scoped,
+      totals,
+      series,
+      cumulative: buildCumulative(series),
+      margin: profitMargin(totals.sales, totals.profit),
+      expenses: categoryTotals(scoped, "expense"),
+      sales: categoryTotals(scoped, "sale"),
+      mix: sourceMix(scoped),
+      heatmap: buildSalesHeatmap(transactions, HEATMAP_WEEKS),
+    };
+  }, [transactions, period, periodDays]);
+
+  // Readiness is a property of the whole history, not of the chosen window —
+  // a lender cares about the full record, so this one deliberately ignores the
+  // period filter, and the caption says so.
+  const readiness = useMemo(() => loanReadiness(transactions), [transactions]);
+
+  const { totals, series, cumulative, margin, expenses, sales, mix } = report;
 
   const handleExport = async () => {
     const { jsPDF } = await import("jspdf");
@@ -76,20 +163,21 @@ export default function ReportsPage() {
     doc.text(profile?.businessName || "Business report", 14, 18);
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Period: ${period === "week" ? "Last 7 days" : period === "month" ? "Last 30 days" : "All time"}`, 14, 25);
+    doc.text(`Period: ${periodLabel}`, 14, 25);
 
     doc.setFontSize(11);
     doc.setTextColor(0);
-    doc.text(`Sales: ${formatCurrency(sales, currency)}`, 14, 36);
-    doc.text(`Expenses: ${formatCurrency(expenses, currency)}`, 14, 43);
-    doc.text(`Profit: ${formatCurrency(profit, currency)}`, 14, 50);
-    doc.text(`Loan-readiness: ${readiness.label} (${readiness.score}/100)`, 14, 57);
+    doc.text(`Sales: ${formatCurrency(totals.sales, currency)}`, 14, 36);
+    doc.text(`Expenses: ${formatCurrency(totals.expenses, currency)}`, 14, 43);
+    doc.text(`Profit: ${formatCurrency(totals.profit, currency)}`, 14, 50);
+    doc.text(`Profit margin: ${margin != null ? `${margin.toFixed(1)}%` : "n/a"}`, 14, 57);
+    doc.text(`Loan-readiness: ${readiness.label} (${readiness.score}/100)`, 14, 64);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (doc as any).autoTable({
-      startY: 65,
+      startY: 72,
       head: [["Date", "Type", "Category", "Note", "Amount"]],
-      body: scoped.map((t) => [
+      body: report.scoped.map((t) => [
         new Date(t.createdAt).toLocaleDateString(),
         t.type,
         t.category,
@@ -105,18 +193,18 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      {/* ── Filter row ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {([
-            ["week", "This week"],
-            ["month", "This month"],
-            ["all", "All time"],
-          ] as [Period, string][]).map(([value, label]) => (
+          {PERIODS.map(([value, label]) => (
             <button
               key={value}
               onClick={() => setPeriod(value)}
-              className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
-                period === value ? "bg-emerald-600 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+              aria-pressed={period === value}
+              className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-all ${
+                period === value
+                  ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
+                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
               }`}
             >
               {label}
@@ -128,52 +216,178 @@ export default function ReportsPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-          <p className="text-sm text-slate-500">Sales</p>
-          <p className="mt-2 text-2xl font-semibold text-emerald-600">{formatCurrency(sales, currency)}</p>
-        </div>
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-          <p className="text-sm text-slate-500">Expenses</p>
-          <p className="mt-2 text-2xl font-semibold text-red-600">{formatCurrency(expenses, currency)}</p>
-        </div>
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-          <p className="text-sm text-slate-500">Profit</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-900">{formatCurrency(profit, currency)}</p>
-        </div>
+      {/* ── Headline numbers ───────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryTile
+          label="Sales"
+          value={totals.sales}
+          currency={currency}
+          icon={TrendingUp}
+          accent={VIZ.salesText}
+          delay={0}
+        />
+        <SummaryTile
+          label="Expenses"
+          value={totals.expenses}
+          currency={currency}
+          icon={TrendingDown}
+          accent={VIZ.expensesText}
+          delay={70}
+        />
+        <SummaryTile
+          label="Profit"
+          value={totals.profit}
+          currency={currency}
+          icon={Wallet}
+          accent={totals.profit >= 0 ? VIZ.salesText : VIZ.expensesText}
+          delay={140}
+        />
+        <SummaryTile
+          label="Profit margin"
+          value={margin ?? 0}
+          format="percent"
+          icon={Percent}
+          accent={VIZ.seq[4]}
+          hint={margin == null ? "No sales in this period" : undefined}
+          delay={210}
+        />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100 lg:col-span-2">
-          <h2 className="mb-4 text-sm font-semibold text-slate-900">Breakdown by category</h2>
-          <div className="space-y-3">
-            {breakdown.length === 0 && <p className="text-sm text-slate-400">No data for this period.</p>}
-            {breakdown.map(([category, net]) => (
-              <div key={category} className="flex items-center justify-between text-sm">
-                <span className="capitalize text-slate-600">{category}</span>
-                <span className={net >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-600"}>
-                  {net >= 0 ? "+" : ""}
-                  {formatCurrency(net, currency)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-          <div className="mb-3 flex items-center gap-2">
-            <ShieldCheck size={18} className="text-emerald-600" />
+      {/* ── Loan-readiness, the reason this product exists ─────────────────── */}
+      <Reveal direction="up">
+        <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
+          <div className="mb-5 flex items-center gap-2">
+            <ShieldCheck size={18} className="text-emerald-700" aria-hidden />
             <h2 className="text-sm font-semibold text-slate-900">Loan-readiness</h2>
           </div>
-          <p className="text-3xl font-semibold text-slate-900">{readiness.score}/100</p>
-          <p className="mb-3 text-sm font-medium text-emerald-600">{readiness.label}</p>
-          <ul className="space-y-1.5 text-xs text-slate-500">
-            {readiness.reasons.map((reason) => (
-              <li key={reason}>• {reason}</li>
-            ))}
-          </ul>
-        </div>
+
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[auto_1fr] lg:gap-12">
+            <ScoreRing
+              score={readiness.score}
+              status={readiness.status}
+              statusLabel={readiness.label}
+              caption="Scored across your whole history, not the selected period"
+            />
+
+            <div className="space-y-4">
+              {readiness.factors.map((factor, index) => (
+                <div key={factor.label}>
+                  <Meter
+                    label={factor.label}
+                    value={factor.earned}
+                    max={factor.possible}
+                    status={factor.met ? "good" : "warning"}
+                    valueLabel={`${factor.earned}/${factor.possible}`}
+                    delay={index * 90}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">{factor.note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </Reveal>
+
+      {/* ── Charts ─────────────────────────────────────────────────────────── */}
+      <Reveal direction="up">
+        <TrendChart
+          data={series}
+          currency={currency}
+          subtitle={`Money in against money out · ${periodLabel.toLowerCase()}`}
+        />
+      </Reveal>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Reveal direction="left">
+          <CategoryBars
+            data={expenses}
+            currency={currency}
+            title="Expenses by category"
+            subtitle={periodLabel}
+          />
+        </Reveal>
+        <Reveal direction="right" delay={80}>
+          <CategoryBars
+            data={sales}
+            currency={currency}
+            title="Sales by category"
+            subtitle={periodLabel}
+            color={VIZ.seq[5]}
+          />
+        </Reveal>
       </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Reveal direction="left">
+          <WeekdayHeatmap
+            cells={report.heatmap}
+            currency={currency}
+            weeks={HEATMAP_WEEKS}
+            subtitle={`Sales per day over the last ${HEATMAP_WEEKS} weeks`}
+          />
+        </Reveal>
+        <Reveal direction="right" delay={80}>
+          <CumulativeProfitChart
+            data={cumulative}
+            currency={currency}
+            subtitle={`Running profit · ${periodLabel.toLowerCase()}`}
+          />
+        </Reveal>
+      </div>
+
+      <Reveal direction="up">
+        <SourceMixBar
+          data={mix}
+          subtitle="Lenders trust records logged as business happened, not backfilled"
+        />
+      </Reveal>
     </div>
+  );
+}
+
+/**
+ * A report headline number. Simpler than the dashboard's StatCard — there's no
+ * period-over-period delta here because the period is the thing the reader is
+ * choosing, so "vs previous" would be comparing against a moving target.
+ */
+function SummaryTile({
+  label,
+  value,
+  currency,
+  format = "currency",
+  icon: Icon,
+  accent,
+  hint,
+  delay = 0,
+}: {
+  label: string;
+  value: number;
+  currency?: string;
+  format?: "currency" | "percent";
+  icon: typeof TrendingUp;
+  /** Semantic money colour. Every value passed here clears 4.5:1 on white. */
+  accent: string;
+  hint?: string;
+  delay?: number;
+}) {
+  return (
+    <Reveal direction="up" delay={delay}>
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100 transition-shadow hover:shadow-md">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-slate-500">{label}</p>
+          <Icon size={16} style={{ color: accent }} aria-hidden />
+        </div>
+        <p className="mt-2 text-2xl font-semibold" style={{ color: accent }}>
+          <AnimatedNumber
+            value={value}
+            format={format}
+            currency={currency}
+            decimals={format === "percent" ? 1 : 0}
+            delay={delay}
+          />
+        </p>
+        {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+      </div>
+    </Reveal>
   );
 }

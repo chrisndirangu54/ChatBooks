@@ -14,6 +14,18 @@ export function formatCurrency(amount: number, currency: string = "USD"): string
   }).format(amount);
 }
 
+/**
+ * Short form for axis ticks and stat tiles, where a full currency string would
+ * collide with its neighbours: 1284 → "1.3K", 4_200_000 → "4.2M".
+ */
+export function formatCompact(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return `${sign}${Math.round(abs)}`;
+}
+
 export function summarizeTotals(transactions: Transaction[]) {
   const sales = transactions.filter((t) => t.type === "sale").reduce((sum, t) => sum + t.amount, 0);
   const expenses = transactions
