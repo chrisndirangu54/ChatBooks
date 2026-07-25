@@ -22,7 +22,7 @@ export default function SettingsPage() {
     connected: boolean;
     deviceId?: string;
   } | null>(null);
-  const [waChecking, setWaChecking] = useState(false);
+  const [waChecking, setWaChecking] = useState(true);
 
   const handleSeed = async () => {
     if (!user) return;
@@ -44,9 +44,13 @@ export default function SettingsPage() {
     }
   };
 
-  // Auto-check on mount
+  // Auto-check on mount. waChecking already starts true, so this only ever
+  // needs to flip it back to false once the promise settles — no setState
+  // call happens synchronously within the effect itself.
   useEffect(() => {
-    checkWA();
+    checkWhatsAppStatus()
+      .then(setWaStatus)
+      .finally(() => setWaChecking(false));
   }, []);
 
   return (
