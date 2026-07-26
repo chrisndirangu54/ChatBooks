@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { subDays, subMonths } from "date-fns";
-import { Download, MessageCircle, ShieldCheck } from "lucide-react";
+import {
+  Download,
+  MessageCircle,
+  ShieldCheck,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  Percent,
+} from "lucide-react";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatCurrency, summarizeTotals } from "@/lib/utils";
 import {
@@ -19,6 +27,15 @@ import { sendWhatsAppReport } from "@/lib/whatsapp";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Label } from "@/components/ui/Input";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { Meter, type StatusKey } from "@/components/ui/Meter";
+import { Reveal } from "@/components/ui/Reveal";
+import { ScoreRing } from "@/components/charts/ScoreRing";
+import { TrendChart } from "@/components/charts/TrendChart";
+import { CategoryBars } from "@/components/charts/CategoryBars";
+import { CumulativeProfitChart } from "@/components/charts/CumulativeProfitChart";
+import { SourceMixBar } from "@/components/charts/SourceMixBar";
+import { WeekdayHeatmap } from "@/components/charts/WeekdayHeatmap";
 import type { Transaction } from "@/types";
 
 type Period = "week" | "month" | "all";
@@ -152,11 +169,14 @@ export default function ReportsPage() {
 
   const { totals, series, cumulative, margin, expenseCategories, salesCategories, mix } = report;
 
+  // Money totals come off `totals` — `expenseCategories` / `salesCategories`
+  // above are per-category arrays, and formatting one as currency yields "$NaN".
   const reportSummary = [
     `📊 ${profile?.businessName || "ChatBooks"} — ${periodLabel}`,
-    `Sales: ${formatCurrency(sales, currency)}`,
-    `Expenses: ${formatCurrency(expenses, currency)}`,
-    `Profit: ${formatCurrency(profit, currency)}`,
+    `Sales: ${formatCurrency(totals.sales, currency)}`,
+    `Expenses: ${formatCurrency(totals.expenses, currency)}`,
+    `Profit: ${formatCurrency(totals.profit, currency)}`,
+    `Profit margin: ${margin != null ? `${margin.toFixed(1)}%` : "n/a"}`,
     `Loan-readiness: ${readiness.label} (${readiness.score}/100)`,
   ].join("\n");
 
