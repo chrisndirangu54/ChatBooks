@@ -11,6 +11,12 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // The pure modules under lib/shop, lib/mpesa and lib/etims are also run
+    // directly by `npm test` (node --test, native type stripping), and Node's
+    // ESM resolver requires a file extension on relative specifiers. Writing
+    // "./tax.ts" satisfies both Node and the bundler; TypeScript only permits
+    // it with this flag, which is safe here because noEmit is on.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

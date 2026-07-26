@@ -9,12 +9,16 @@ import {
   FileBarChart,
   Settings,
   MessageSquareText,
+  Package,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/chat", label: "WhatsApp Chat", icon: MessageCircle },
+  { href: "/dashboard/products", label: "Products", icon: Package },
+  { href: "/dashboard/orders", label: "Orders", icon: ShoppingCart },
   { href: "/dashboard/transactions", label: "Transactions", icon: Receipt },
   { href: "/dashboard/reports", label: "Reports", icon: FileBarChart },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },

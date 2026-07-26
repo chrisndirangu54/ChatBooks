@@ -5,8 +5,11 @@ import { createHmac, timingSafeEqual } from "crypto";
 // authenticated HTTP round-trip back into our own app.
 import { serverTransactionAI } from "@/lib/ai/server";
 import { adminDb } from "@/lib/firebase-admin";
+import { normalizeMsisdn } from "@/lib/mpesa/wire";
+import { getProfile } from "@/lib/server/shop-repo";
+import { handleShoppingMessage } from "@/lib/server/shopping";
 import type { NewTransaction } from "@/lib/data/transactions";
-import type { ParsedTransaction } from "@/types";
+import type { BusinessProfile, ParsedTransaction } from "@/types";
 
 /**
  * Verifies the X-Hub-Signature-256 header the Go WhatsApp server signs
@@ -59,6 +62,26 @@ async function getBusinessUidForPhone(phone?: string): Promise<string> {
     console.error("[ChatBooks Webhook] Error finding business UID:", error, phone);
     return "demo-business";
   }
+}
+
+/**
+ * Decides whether an inbound message is the owner doing bookkeeping or a
+ * customer shopping — the single fork that lets one WhatsApp number serve
+ * both.
+ *
+ * Fails safe towards bookkeeping: with no `ownerPhone` on the profile, every
+ * message is the owner's, exactly as it behaved before ordering existed. The
+ * alternative default would turn a shopkeeper's "sold rice 1500" into a
+ * confused catalog listing.
+ */
+function isOwnerMessage(profile: BusinessProfile | null, phone?: string): boolean {
+  const ownerPhone = profile?.ownerPhone;
+  if (!ownerPhone) return true;
+  if (!phone) return true;
+
+  const normalizedOwner = normalizeMsisdn(ownerPhone) ?? ownerPhone.replace(/\D/g, "");
+  const normalizedSender = normalizeMsisdn(phone) ?? phone.replace(/\D/g, "");
+  return normalizedOwner === normalizedSender;
 }
 
 function formatCurrency(amount: number, currency = "USD"): string {
@@ -150,7 +173,30 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 2. Parse the transaction if not already done by the caller ──────────
+    // ── 2. Owner bookkeeping, or a customer shopping? ────────────────────────
+    const profile = await getProfile(targetUid);
+
+    if (!isOwnerMessage(profile, phone) && phone) {
+      const shopping = await handleShoppingMessage({
+        uid: targetUid,
+        profile,
+        phone,
+        text: text ?? "",
+        now: Date.now(),
+      });
+
+      console.log(
+        `[ChatBooks Webhook] Shopping turn for ${phone}${shopping.orderId ? ` → order ${shopping.orderId}` : ""}`,
+      );
+
+      return NextResponse.json({
+        success: true,
+        reply_text: shopping.replyText,
+        ...(shopping.orderId ? { order_id: shopping.orderId } : {}),
+      });
+    }
+
+    // ── 3. Parse the transaction if not already done by the caller ──────────
     let transactionToSave: ParsedTransaction | null = parsedTransactionInput ?? null;
 
     if (!transactionToSave && text) {
@@ -165,7 +211,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 3. Save to Firestore via the Admin SDK ───────────────────────────────
+    // ── 4. Save to Firestore via the Admin SDK ───────────────────────────────
     const source: NewTransaction["source"] = imageUrl || isReceipt ? "receipt" : "chat";
     const transactionData: NewTransaction = {
       type: transactionToSave.type,
@@ -183,7 +229,7 @@ export async function POST(req: Request) {
       .collection("transactions")
       .add(transactionData);
 
-    // ── 4. Build confirmation reply ──────────────────────────────────────────
+    // ── 5. Build confirmation reply ──────────────────────────────────────────
     const formattedType = transactionToSave.type === "sale" ? "📈 Sale" : "📉 Expense";
     const formattedAmount = formatCurrency(transactionToSave.amount, currency);
     const noteText = transactionToSave.note ? ` — ${transactionToSave.note}` : "";
