@@ -173,26 +173,37 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 2. Owner bookkeeping, or a customer shopping? ────────────────────────
-    const profile = await getProfile(targetUid);
+    // ── 2. Handle "undo" / "delete last" command ────────────────────────────
+    if (text && /^(undo|delete|delete last|remove|remove last|cancel)$/i.test(text.trim())) {
+      const lastQuery = await adminDb
+        .collection("businesses")
+        .doc(targetUid)
+        .collection("transactions")
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
 
-    if (!isOwnerMessage(profile, phone) && phone) {
-      const shopping = await handleShoppingMessage({
-        uid: targetUid,
-        profile,
-        phone,
-        text: text ?? "",
-        now: Date.now(),
-      });
+      if (!lastQuery.empty) {
+        const docToDelete = lastQuery.docs[0];
+        const data = docToDelete.data();
+        await docToDelete.ref.delete();
 
-      console.log(
-        `[ChatBooks Webhook] Shopping turn for ${phone}${shopping.orderId ? ` → order ${shopping.orderId}` : ""}`,
-      );
+        const typeStr = data.type === "sale" ? "📈 Sale" : "📉 Expense";
+        const amountStr = formatCurrency(data.amount || 0, currency);
+        const noteStr = data.note ? ` (${data.note})` : "";
+
+        return NextResponse.json({
+          success: true,
+          reply_text: [
+            `Removed 🗑️ ${typeStr}: ${amountStr}${noteStr}`,
+            `This transaction has been deleted from your ChatBooks records.`,
+          ].join("\n"),
+        });
+      }
 
       return NextResponse.json({
         success: true,
-        reply_text: shopping.replyText,
-        ...(shopping.orderId ? { order_id: shopping.orderId } : {}),
+        reply_text: "No recent transactions found to remove.",
       });
     }
 
@@ -229,13 +240,17 @@ export async function POST(req: Request) {
       .collection("transactions")
       .add(transactionData);
 
-    // ── 5. Build confirmation reply ──────────────────────────────────────────
+    // ── 5. Build friendly confirmation reply with Undo prompt ─────────────────
     const formattedType = transactionToSave.type === "sale" ? "📈 Sale" : "📉 Expense";
     const formattedAmount = formatCurrency(transactionToSave.amount, currency);
     const noteText = transactionToSave.note ? ` — ${transactionToSave.note}` : "";
+    const categoryText = transactionToSave.category ? `\n📂 Category: ${transactionToSave.category}` : "";
+
     const replyText = [
-      `Saved ✅ ${formattedType}: ${formattedAmount}${noteText}`,
-      `Reflected live in your ChatBooks dashboard!`,
+      `Saved ✅ ${formattedType}: ${formattedAmount}${noteText}${categoryText}`,
+      ``,
+      `📊 Reflected live in your ChatBooks dashboard!`,
+      `💡 Made a mistake? Reply "undo" to remove this entry.`,
     ].join("\n");
 
     console.log(
