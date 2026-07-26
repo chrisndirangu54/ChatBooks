@@ -5,6 +5,8 @@ import { VIZ } from "@/lib/viz";
 
 const WIDTH = 100;
 const HEIGHT = 32;
+/** Horizontal inset so the end marker's full circle and ring stay in frame. */
+const INSET_X = 3;
 
 /**
  * The trend line inside a stat tile — 12-ish points, no axes, no labels.
@@ -37,16 +39,19 @@ export function Sparkline({
     const min = Math.min(...values, 0);
     const max = Math.max(...values, 0);
     const span = max - min || 1;
-    const step = values.length > 1 ? WIDTH / (values.length - 1) : 0;
+    const plotWidth = WIDTH - INSET_X * 2;
+    const step = values.length > 1 ? plotWidth / (values.length - 1) : 0;
 
     const points = values.map((value, index) => ({
-      x: values.length > 1 ? index * step : WIDTH / 2,
+      x: values.length > 1 ? INSET_X + index * step : WIDTH / 2,
       // Inset by 3px top and bottom so the stroke and end dot never clip.
       y: HEIGHT - 3 - ((value - min) / span) * (HEIGHT - 6),
     }));
 
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
-    const area = `${line} L${WIDTH} ${HEIGHT} L0 ${HEIGHT} Z`;
+    // Close the wash down to the baseline at the line's own end points, so the
+    // fill doesn't flare out past where the data actually stops.
+    const area = `${line} L${WIDTH - INSET_X} ${HEIGHT} L${INSET_X} ${HEIGHT} Z`;
 
     return { line, area, last: points[points.length - 1] };
   }, [values]);

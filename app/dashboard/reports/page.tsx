@@ -2,13 +2,40 @@
 
 import { useMemo, useState } from "react";
 import { subDays, subMonths } from "date-fns";
-import { Download, MessageCircle, ShieldCheck } from "lucide-react";
+import {
+  Download,
+  MessageCircle,
+  ShieldCheck,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  Percent,
+} from "lucide-react";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatCurrency, summarizeTotals } from "@/lib/utils";
 import { sendWhatsAppReport } from "@/lib/whatsapp";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Label } from "@/components/ui/Input";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { Meter, type StatusKey } from "@/components/ui/Meter";
+import { Reveal } from "@/components/ui/Reveal";
+import { ScoreRing } from "@/components/charts/ScoreRing";
+import { TrendChart } from "@/components/charts/TrendChart";
+import { CategoryBars } from "@/components/charts/CategoryBars";
+import { CumulativeProfitChart } from "@/components/charts/CumulativeProfitChart";
+import { SourceMixBar } from "@/components/charts/SourceMixBar";
+import { WeekdayHeatmap } from "@/components/charts/WeekdayHeatmap";
+import {
+  buildCumulative,
+  buildSalesHeatmap,
+  buildScopedSeries,
+  categoryTotals,
+  historySpanDays,
+  profitMargin,
+  sourceMix,
+  VIZ,
+} from "@/lib/viz";
 import type { Transaction } from "@/types";
 
 type Period = "week" | "month" | "all";
@@ -125,8 +152,11 @@ export default function ReportsPage() {
       series,
       cumulative: buildCumulative(series),
       margin: profitMargin(totals.sales, totals.profit),
-      expenses: categoryTotals(scoped, "expense"),
-      sales: categoryTotals(scoped, "sale"),
+      // Named for what they are — per-category arrays, not money totals. The
+      // totals live on `totals`, and keeping the two obviously distinct stops a
+      // `formatCurrency(expenses)` slip.
+      expenseCategories: categoryTotals(scoped, "expense"),
+      salesCategories: categoryTotals(scoped, "sale"),
       mix: sourceMix(scoped),
       heatmap: buildSalesHeatmap(transactions, HEATMAP_WEEKS),
     };
@@ -137,14 +167,14 @@ export default function ReportsPage() {
   // period filter, and the caption says so.
   const readiness = useMemo(() => loanReadiness(transactions), [transactions]);
 
-  const { totals, series, cumulative, margin, expenses, sales, mix } = report;
+  const { totals, series, cumulative, margin, expenseCategories, salesCategories, mix } = report;
 
-  const periodLabel = period === "week" ? "This week" : period === "month" ? "This month" : "All time";
   const reportSummary = [
     `📊 ${profile?.businessName || "ChatBooks"} — ${periodLabel}`,
-    `Sales: ${formatCurrency(sales, currency)}`,
-    `Expenses: ${formatCurrency(expenses, currency)}`,
-    `Profit: ${formatCurrency(profit, currency)}`,
+    `Sales: ${formatCurrency(totals.sales, currency)}`,
+    `Expenses: ${formatCurrency(totals.expenses, currency)}`,
+    `Profit: ${formatCurrency(totals.profit, currency)}`,
+    `Profit margin: ${margin != null ? `${margin.toFixed(1)}%` : "n/a"}`,
     `Loan-readiness: ${readiness.label} (${readiness.score}/100)`,
   ].join("\n");
 
@@ -299,7 +329,7 @@ export default function ReportsPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Reveal direction="left">
           <CategoryBars
-            data={expenses}
+            data={expenseCategories}
             currency={currency}
             title="Expenses by category"
             subtitle={periodLabel}
@@ -307,7 +337,7 @@ export default function ReportsPage() {
         </Reveal>
         <Reveal direction="right" delay={80}>
           <CategoryBars
-            data={sales}
+            data={salesCategories}
             currency={currency}
             title="Sales by category"
             subtitle={periodLabel}
@@ -316,7 +346,6 @@ export default function ReportsPage() {
         </Reveal>
       </div>
 
-<<<<<<< HEAD
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Reveal direction="left">
           <WeekdayHeatmap
@@ -341,18 +370,16 @@ export default function ReportsPage() {
           subtitle="Lenders trust records logged as business happened, not backfilled"
         />
       </Reveal>
-=======
+
       <SendToWhatsAppModal
         open={whatsappModalOpen}
         onClose={() => setWhatsappModalOpen(false)}
         message={reportSummary}
       />
->>>>>>> b97b9ee9f05847fa29df1fc7b0bcd5779d74bf93
     </div>
   );
 }
 
-<<<<<<< HEAD
 /**
  * A report headline number. Simpler than the dashboard's StatCard — there's no
  * period-over-period delta here because the period is the thing the reader is
@@ -397,7 +424,9 @@ function SummaryTile({
         {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
       </div>
     </Reveal>
-=======
+  );
+}
+
 function SendToWhatsAppModal({
   open,
   onClose,
@@ -437,9 +466,9 @@ function SendToWhatsAppModal({
           />
         </div>
         <pre className="whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{message}</pre>
-        {status === "sent" && <p className="text-sm text-emerald-600">Sent ✅</p>}
+        {status === "sent" && <p className="text-sm text-emerald-700">Sent ✅</p>}
         {status === "error" && (
-          <p className="text-sm text-red-600">
+          <p className="text-sm text-red-700">
             Couldn&apos;t reach the WhatsApp server. Check it&apos;s running and connected in Settings.
           </p>
         )}
@@ -453,6 +482,5 @@ function SendToWhatsAppModal({
         </div>
       </form>
     </Modal>
->>>>>>> b97b9ee9f05847fa29df1fc7b0bcd5779d74bf93
   );
 }

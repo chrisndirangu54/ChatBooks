@@ -85,7 +85,10 @@ export function CategoryBars({
               {/* No gridlines: every bar is already labelled at its tip, and
                   there's no visible x-axis to read a gridline against, so they'd
                   be ink that carries nothing. */}
-              <XAxis type="number" hide />
+              {/* dataMax, not an auto-rounded maximum: this chart is read as a
+                  ranking, so the biggest category should span the plot instead
+                  of stopping short of a tick that isn't drawn anyway. */}
+              <XAxis type="number" domain={[0, "dataMax"]} hide />
               <YAxis
                 type="category"
                 dataKey="category"

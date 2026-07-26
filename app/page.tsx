@@ -303,7 +303,7 @@ export default function LandingPage() {
               <NetProfitBars
                 data={SAMPLE_WEEK}
                 currency={SAMPLE_CURRENCY}
-                subtitle="Wednesday's restock cost more than the day sold"
+                subtitle="Wednesday cost more than it sold"
               />
             </Reveal>
             <Reveal direction="right" delay={80}>

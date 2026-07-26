@@ -54,7 +54,10 @@ export function WeekdayHeatmap({
       }
     >
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[320px] border-separate border-spacing-[2px]">
+        {/* table-fixed so all seven weekday columns are the same width — left to
+            auto-size, they'd size to their header letters and the grid would
+            come out visibly uneven. */}
+        <table className="w-full min-w-[320px] table-fixed border-separate border-spacing-[2px]">
           <thead>
             <tr>
               <th className="w-16" />
