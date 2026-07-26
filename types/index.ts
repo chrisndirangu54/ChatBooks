@@ -134,6 +134,8 @@ export interface ParsedTransaction {
   category: string;
   note: string;
   confidence: number;
+  /** ISO 4217 currency code detected on a receipt photo, e.g. "KES", "USD". */
+  currency?: string;
 }
 
 export interface WeeklySummary {
