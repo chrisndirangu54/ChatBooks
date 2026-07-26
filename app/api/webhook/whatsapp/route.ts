@@ -195,7 +195,7 @@ export async function POST(req: Request) {
       image_url: imageUrl,
       parsed_transaction: parsedTransactionInput,
       business_uid: businessUidOverride,
-      currency = "USD",
+      currency: rawCurrency,
     } = body as {
       sender?: string;
       phone?: string;
@@ -223,6 +223,7 @@ export async function POST(req: Request) {
     // knowing who is speaking would let a shopper delete the shopkeeper's last
     // transaction.
     const routedToOwner = isOwnerMessage(profile, phone);
+    const currency = profile?.currency || rawCurrency || "KES";
 
     // Logged on every message because the failure mode here is silent: a
     // customer gets a bookkeeping reply and nothing anywhere says why.
@@ -352,17 +353,67 @@ export async function POST(req: Request) {
       transactionToSave = await serverTransactionAI.parseMessage(text, []);
     }
 
-    if (!transactionToSave) {
+    // Force correct transaction type based on explicit verb
+    const textTrim = (text || "").trim();
+    const isSaleVerb = /^(sell|sold|selling|sale|niliuza|nikauza)\b/i.test(textTrim);
+    const isExpenseVerb = /^(bought|paid|spent|restocked|nilinunua|buy|purchased)\b/i.test(textTrim);
+
+    if (transactionToSave) {
+      if (isSaleVerb) transactionToSave.type = "sale";
+      if (isExpenseVerb) transactionToSave.type = "expense";
+    }
+
+    // Catalog Price Lookup if no valid amount was detected (e.g. "sell sugar 2kg")
+    if ((!transactionToSave || !transactionToSave.amount || transactionToSave.amount <= 0) && text) {
+      try {
+        const productsSnapshot = await adminDb
+          .collection("businesses")
+          .doc(targetUid)
+          .collection("products")
+          .get();
+
+        const textLower = textTrim.toLowerCase();
+        for (const doc of productsSnapshot.docs) {
+          const product = doc.data();
+          if (product.name && textLower.includes(product.name.toLowerCase())) {
+            let qty = 1;
+            const matchQty = textLower.match(/(\d+)\s*(kg|g|pairs?|pcs?|items?|units?|bags?|crates?|litres?)/i);
+            if (matchQty && matchQty[1]) {
+              const parsedQty = parseInt(matchQty[1], 10);
+              if (parsedQty > 0 && parsedQty < 1000) qty = parsedQty;
+            }
+
+            const unitPrice = product.price || 0;
+            const totalAmount = unitPrice > 0 ? unitPrice * qty : 0;
+
+            if (totalAmount > 0) {
+              transactionToSave = {
+                type: isExpenseVerb ? "expense" : "sale",
+                amount: totalAmount,
+                category: isExpenseVerb ? "inventory" : "sales",
+                note: `${product.name} (${qty}${matchQty?.[2] || " units"} @ ${formatCurrency(unitPrice, currency)})`,
+                confidence: 0.95,
+              };
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[ChatBooks Webhook] Catalog price lookup error:", err);
+      }
+    }
+
+    if (!transactionToSave || !transactionToSave.amount || transactionToSave.amount <= 0) {
       return NextResponse.json({
         success: false,
         reply_text: [
-          `I couldn't detect a transaction amount.`,
+          `I couldn't detect a transaction amount for "${textTrim}".`,
           ``,
-          `💡 *Examples you can try:*`,
+          `💡 *How to log a sale or expense:*`,
+          `• "Sold 2kg sugar 300 KES"`,
           `• "Sold 2 shoes 4500"`,
-          `• "Paid 1200 for electricity bill"`,
-          `• Reply "inventory" to see available stock`,
-          `• Attach a receipt photo`,
+          `• "Paid 1200 for electricity"`,
+          `• Reply "inventory" to check your product prices & stock`,
         ].join("\n"),
       });
     }
