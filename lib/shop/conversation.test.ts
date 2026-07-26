@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   availableStock,
   handleCustomerMessage,
+  matchProductByName,
   newSession,
   parseCommand,
   visibleCatalog,
@@ -179,6 +180,58 @@ test("the input session is never mutated", () => {
   });
   assert.deepEqual(session.items, []);
   assert.equal(session.state, "browsing");
+});
+
+// ── Ordering by name ───────────────────────────────────────────────────────
+
+test("a customer who names the product gets it added", () => {
+  // The message that failed in production: a clear order, previously answered
+  // with "I didn't catch that".
+  const { session, reply } = turn("want to buy sukari");
+  assert.deepEqual(
+    session.items.map((i) => i.name),
+    ["Sukari 1kg"],
+  );
+  assert.match(reply, /Added 1 × Sukari 1kg/);
+});
+
+test("naming a product is case- and punctuation-insensitive", () => {
+  for (const text of ["SUKARI", "Sukari!", "do you have sukari?", "sukari 1kg"]) {
+    assert.equal(turn(text).session.items.length, 1, text);
+  }
+});
+
+test("a quantity immediately before the name is honoured", () => {
+  const { session } = turn("2 sukari please");
+  assert.equal(session.items[0].quantity, 2);
+});
+
+test("a number that isn't a quantity doesn't become one", () => {
+  // "sukari 1kg" is a name with a unit in it, not an order for 1kg of nothing;
+  // "500" here is part of the size, not a count.
+  assert.equal(matchProductByName(CATALOG, "sukari 1kg")?.quantity, 1);
+  assert.equal(matchProductByName(CATALOG, "maziwa 500 ml")?.quantity, 1);
+});
+
+test("the longest matching name wins", () => {
+  const catalog: Product[] = [
+    { id: "u1", name: "Unga", price: 100, active: true, createdAt: 0, taxCategory: "vat_16" },
+    { id: "u2", name: "Unga Ngano", price: 160, active: true, createdAt: 0, taxCategory: "vat_16" },
+  ];
+  assert.equal(matchProductByName(catalog, "nataka unga ngano")?.product.id, "u2");
+  assert.equal(matchProductByName(catalog, "nataka unga")?.product.id, "u1");
+});
+
+test("an unrelated message still matches nothing", () => {
+  assert.equal(matchProductByName(CATALOG, "what time do you close"), null);
+  assert.equal(matchProductByName(CATALOG, ""), null);
+});
+
+test("a sold-out product can't be ordered by name either", () => {
+  // visibleCatalog is what gets matched against, so hidden means unorderable.
+  const { session, reply } = stockedTurn("i want bamia");
+  assert.equal(session.items.length, 0);
+  assert.match(reply, /didn't catch that/);
 });
 
 // ── Stock ──────────────────────────────────────────────────────────────────

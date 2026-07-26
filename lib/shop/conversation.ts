@@ -112,6 +112,74 @@ export function parseCommand(text: string): ShopCommand {
   return { kind: "unknown" };
 }
 
+/** Lowercase, punctuation-free tokens — "Sukari 1kg!" → ["sukari", "1kg"]. */
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+}
+
+/**
+ * Match a message against product names, so "want to buy sukari" works.
+ *
+ * Real customers type the thing they want, not its menu number — the numbers
+ * are a convenience for feature phones, not a language. Without this, a
+ * perfectly clear message falls through to "I didn't catch that".
+ *
+ * Matches on the product's leading word rather than its full name, because
+ * catalogs read "Sukari 1kg" while customers type "sukari". Longest match wins,
+ * so "unga ngano" beats a bare "unga" when both are stocked.
+ */
+export function matchProductByName(
+  catalog: Product[],
+  text: string,
+): { product: Product; quantity: number } | null {
+  const tokens = tokenize(text);
+  if (tokens.length === 0) return null;
+
+  let best: { product: Product; at: number; length: number } | null = null;
+
+  for (const product of catalog) {
+    const nameTokens = tokenize(product.name);
+    if (nameTokens.length === 0) continue;
+
+    // Try the full name first, then progressively shorter prefixes, down to a
+    // single leading word of 3+ characters. Two letters matches too much.
+    for (let length = nameTokens.length; length >= 1; length -= 1) {
+      const phrase = nameTokens.slice(0, length);
+      if (length === 1 && phrase[0].length < 3) break;
+
+      const at = indexOfSequence(tokens, phrase);
+      if (at === -1) continue;
+
+      if (!best || length > best.length) best = { product, at, length };
+      break;
+    }
+  }
+
+  if (!best) return null;
+
+  // Only read a quantity from the token immediately before the name. Anything
+  // looser turns "sukari 500 ml" into an order for five hundred bags.
+  const preceding = best.at > 0 ? tokens[best.at - 1] : undefined;
+  const quantity = preceding && /^\d{1,3}$/.test(preceding) ? Number(preceding) : 1;
+
+  return { product: best.product, quantity: quantity >= 1 ? quantity : 1 };
+}
+
+function indexOfSequence(haystack: string[], needle: string[]): number {
+  outer: for (let i = 0; i + needle.length <= haystack.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
 function renderCatalog(catalog: Product[], businessName: string, currency: string): string {
   if (catalog.length === 0) {
     return `🛒 *${businessName}*\n\nThe catalog is empty right now — please check back shortly.`;
@@ -187,6 +255,43 @@ export function handleCustomerMessage(input: ShopTurnInput): ShopTurn {
     action: { kind: "none" },
   });
 
+  /** Shared by the "3" form and the "sukari" form — same rules either way. */
+  const addToCartTurn = (product: Product, requested: number): ShopTurn => {
+    if (requested < 1 || requested > MAX_QUANTITY) {
+      return stay(`Please choose a quantity between 1 and ${MAX_QUANTITY}.`);
+    }
+
+    // Cap against what's left, counting what this customer is already holding.
+    // Refusing here is far kinder than taking the money and discovering the
+    // shortfall at settlement.
+    const remaining = availableStock(product);
+    const alreadyInCart = session.items.find((i) => i.productId === product.id)?.quantity ?? 0;
+    const grantable = remaining === null ? requested : Math.max(0, remaining - alreadyInCart);
+
+    if (grantable === 0) {
+      return stay(
+        remaining === 0
+          ? `Sorry, ${product.name} is out of stock.`
+          : `You already have all ${remaining} of the ${product.name} we have left in your cart.`,
+      );
+    }
+
+    const granted = Math.min(requested, grantable);
+    const items = addToCart(session.items, product, granted);
+    const { total } = totalsFor(items);
+
+    return stay(
+      [
+        `Added ${granted} × ${product.name} ✅`,
+        ...(granted < requested ? [`(that's all ${granted} we had left)`] : []),
+        `Cart total: ${formatMoney(total, currency)}`,
+        "",
+        "Reply with another number to keep shopping, or *PAY* to pay by M-Pesa.",
+      ].join("\n"),
+      { state: "cart", items },
+    );
+  };
+
   // While an STK prompt is live, the only safe move is to finish or abandon it.
   // Re-pushing on "PAY" could leave two prompts on the handset and two debits
   // against one cart, so a resend has to go through an explicit CANCEL first.
@@ -225,42 +330,7 @@ export function handleCustomerMessage(input: ShopTurnInput): ShopTurn {
           `I don't have an item ${command.index}.\n\n${renderCatalog(catalog, businessName, currency)}`,
         );
       }
-      if (command.quantity < 1 || command.quantity > MAX_QUANTITY) {
-        return stay(`Please choose a quantity between 1 and ${MAX_QUANTITY}.`);
-      }
-
-      // Cap against what's left, counting what this customer is already
-      // holding. Refusing here is far kinder than taking the money and
-      // discovering the shortfall at settlement.
-      const remaining = availableStock(product);
-      const alreadyInCart = session.items.find((i) => i.productId === product.id)?.quantity ?? 0;
-      const grantable =
-        remaining === null ? command.quantity : Math.max(0, remaining - alreadyInCart);
-
-      if (grantable === 0) {
-        return stay(
-          remaining === 0
-            ? `Sorry, ${product.name} is out of stock.`
-            : `You already have all ${remaining} of the ${product.name} we have left in your cart.`,
-        );
-      }
-
-      const granted = Math.min(command.quantity, grantable);
-      const items = addToCart(session.items, product, granted);
-      const { total } = totalsFor(items);
-
-      return stay(
-        [
-          `Added ${granted} × ${product.name} ✅`,
-          ...(granted < command.quantity
-            ? [`(that's all ${granted} we had left)`]
-            : []),
-          `Cart total: ${formatMoney(total, currency)}`,
-          "",
-          "Reply with another number to keep shopping, or *PAY* to pay by M-Pesa.",
-        ].join("\n"),
-        { state: "cart", items },
-      );
+      return addToCartTurn(product, command.quantity);
     }
 
     case "remove": {
@@ -288,14 +358,16 @@ export function handleCustomerMessage(input: ShopTurnInput): ShopTurn {
     }
 
     case "unknown":
-    default:
+    default: {
+      // Before giving up, check whether they simply named what they want —
+      // "want to buy sukari" is a clear order, not a parse failure.
+      const named = matchProductByName(catalog, text);
+      if (named) return addToCartTurn(named.product, named.quantity);
+
       return stay(
-        [
-          "I didn't catch that.",
-          "",
-          renderCatalog(catalog, businessName, currency),
-        ].join("\n"),
+        ["I didn't catch that.", "", renderCatalog(catalog, businessName, currency)].join("\n"),
       );
+    }
   }
 }
 

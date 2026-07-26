@@ -36,31 +36,74 @@ function verifySignature(rawBody: string, header: string | null): boolean {
   return timingSafeEqual(expectedBuf, providedBuf);
 }
 
+/** The placeholder this route creates when no real business has signed up yet. */
+const DEMO_BUSINESS_ID = "demo-business";
+
 /**
- * Finds the UID of the first registered business in Firestore.
- * In a production multi-tenant system, you would look up by phone number
- * or a stored mapping of whatsapp_phone → business uid.
+ * Work out which business an inbound message belongs to.
+ *
+ * The naive version of this — `businesses.limit(1)` — had a nasty failure
+ * mode. `limit(1)` returns an arbitrary document, so once the demo placeholder
+ * existed alongside a real signup, the webhook could read the placeholder
+ * while the dashboard wrote to `businesses/{uid}`. The shopkeeper then sets
+ * their WhatsApp number in Settings, watches it save, and ordering stays
+ * switched off, because the webhook is looking at a different document.
+ *
+ * So: prefer a real business over the placeholder, and prefer the one whose
+ * owner is actually messaging. Genuine multi-tenant routing needs the
+ * *receiving* number rather than the sender's, which the GoWA payload doesn't
+ * carry — hence the warning rather than a silent guess.
  */
-async function getBusinessUidForPhone(phone?: string): Promise<string> {
+async function resolveBusiness(
+  phone?: string,
+): Promise<{ uid: string; profile: BusinessProfile | null }> {
   try {
-    const snapshot = await adminDb.collection("businesses").limit(1).get();
-    if (!snapshot.empty) {
-      return snapshot.docs[0].id;
+    const snapshot = await adminDb.collection("businesses").limit(50).get();
+
+    const candidates = snapshot.docs.map((doc) => ({
+      uid: doc.id,
+      profile: doc.data() as BusinessProfile,
+    }));
+    const real = candidates.filter((c) => c.uid !== DEMO_BUSINESS_ID);
+    const pool = real.length > 0 ? real : candidates;
+
+    if (pool.length === 0) {
+      const demoRef = adminDb.collection("businesses").doc(DEMO_BUSINESS_ID);
+      await demoRef.set(
+        { businessName: "Demo Business", currency: "USD", createdAt: Date.now() },
+        { merge: true },
+      );
+      console.warn(
+        "[ChatBooks Webhook] No business has signed up yet — using the demo placeholder. " +
+          "Customer ordering stays off until a real business exists with ownerPhone set.",
+      );
+      return { uid: DEMO_BUSINESS_ID, profile: null };
     }
-    // Demo mode: auto-create a fallback business so WhatsApp messages always save
-    const demoRef = adminDb.collection("businesses").doc("demo-business");
-    const demoDoc = await demoRef.get();
-    if (!demoDoc.exists) {
-      await demoRef.set({
-        name: "Demo Business",
-        currency: "USD",
-        createdAt: Date.now(),
+
+    // If the sender is a registered owner, the business is theirs, no guessing.
+    const sender = phone ? (normalizeMsisdn(phone) ?? phone.replace(/\D/g, "")) : null;
+    if (sender) {
+      const owned = pool.find((c) => {
+        if (!c.profile?.ownerPhone) return false;
+        return (
+          (normalizeMsisdn(c.profile.ownerPhone) ?? c.profile.ownerPhone.replace(/\D/g, "")) ===
+          sender
+        );
       });
+      if (owned) return owned;
     }
-    return demoRef.id;
+
+    if (pool.length > 1) {
+      console.warn(
+        `[ChatBooks Webhook] ${pool.length} businesses registered and the sender isn't a known owner; ` +
+          `defaulting to ${pool[0].uid}. Multi-shop routing needs the receiving number, which this webhook doesn't get.`,
+      );
+    }
+
+    return pool[0];
   } catch (error) {
-    console.error("[ChatBooks Webhook] Error finding business UID:", error, phone);
-    return "demo-business";
+    console.error("[ChatBooks Webhook] Error resolving business:", error, phone);
+    return { uid: DEMO_BUSINESS_ID, profile: null };
   }
 }
 
@@ -164,14 +207,12 @@ export async function POST(req: Request) {
       currency?: string;
     };
 
-    // ── 1. Resolve the business UID ──────────────────────────────────────────
-    const targetUid = businessUidOverride ?? (await getBusinessUidForPhone(phone));
-    if (!targetUid) {
-      return NextResponse.json({
-        success: false,
-        reply_text: "No ChatBooks business is set up yet — sign up at the ChatBooks dashboard first.",
-      });
-    }
+    // ── 1. Resolve the business ──────────────────────────────────────────────
+    const resolved = businessUidOverride
+      ? { uid: businessUidOverride, profile: await getProfile(businessUidOverride) }
+      : await resolveBusiness(phone);
+    const targetUid = resolved.uid;
+    const profile = resolved.profile;
 
     // ── 2. Owner bookkeeping, or a customer shopping? ────────────────────────
     //
@@ -181,9 +222,22 @@ export async function POST(req: Request) {
     // M-Pesa prompt, "remove" appears in cart edits). Interpreting them before
     // knowing who is speaking would let a shopper delete the shopkeeper's last
     // transaction.
-    const profile = await getProfile(targetUid);
+    const routedToOwner = isOwnerMessage(profile, phone);
 
-    if (phone && !isOwnerMessage(profile, phone)) {
+    // Logged on every message because the failure mode here is silent: a
+    // customer gets a bookkeeping reply and nothing anywhere says why.
+    console.log(
+      `[ChatBooks Webhook] ${phone ?? "(no phone)"} → ${routedToOwner ? "bookkeeping" : "shopping"} ` +
+        `(business ${targetUid}, ownerPhone ${profile?.ownerPhone ? "set" : "UNSET"})`,
+    );
+    if (!profile?.ownerPhone) {
+      console.warn(
+        "[ChatBooks Webhook] ownerPhone is not set on this business, so every message is treated " +
+          "as the owner's and customer ordering is off. Set it in Dashboard → Settings.",
+      );
+    }
+
+    if (phone && !routedToOwner) {
       const shopping = await handleShoppingMessage({
         uid: targetUid,
         profile,

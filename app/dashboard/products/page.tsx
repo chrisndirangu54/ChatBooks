@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -107,6 +108,32 @@ export default function ProductsPage() {
           <Plus size={16} /> Add product
         </Button>
       </div>
+
+      {!profile?.ownerPhone && (
+        <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-600/20">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <p>
+            <span className="font-medium">Customer ordering is off.</span> Until your own WhatsApp
+            number is set, every message to the shop is treated as your bookkeeping — a customer
+            asking to buy something gets &ldquo;I couldn&apos;t detect a transaction amount&rdquo;
+            instead of the menu.{" "}
+            <Link href="/dashboard/settings" className="font-medium underline">
+              Set it in Settings
+            </Link>
+            .
+          </p>
+        </div>
+      )}
+
+      {profile?.ownerPhone && products.filter((p) => p.active).length === 0 && !loading && (
+        <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-600/20">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <p>
+            Ordering is on, but there&apos;s nothing to sell — customers will be told the catalog is
+            empty. Add at least one active product.
+          </p>
+        </div>
+      )}
 
       {missingCodes > 0 && (
         <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-600/20">
