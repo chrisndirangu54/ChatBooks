@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 96" width="128" height="96" role="img">
+  <title>Months of records compounding into a lender-ready credit file</title>
+  <defs>
+    <linearGradient id="fk-bar" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#0891b2" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+  </defs>
+
+  <!-- stacked pages behind -->
+  <rect x="22" y="16" width="60" height="72" rx="8" fill="#ffffff" stroke="#e2e8f0" />
+  <rect x="17" y="12" width="60" height="72" rx="8" fill="#ffffff" stroke="#cbd5e1" />
+
+  <!-- page content -->
+  <g fill="#cbd5e1">
+    <rect x="25" y="22" width="30" height="4" rx="2" />
+    <rect x="25" y="32" width="44" height="3" rx="1.5" />
+    <rect x="25" y="40" width="38" height="3" rx="1.5" />
+  </g>
+
+  <!-- rising bars on the page -->
+  <g fill="url(#fk-bar)">
+    <rect x="25" y="66" width="7" height="10" rx="2" />
+    <rect x="36" y="60" width="7" height="16" rx="2" />
+    <rect x="47" y="54" width="7" height="22" rx="2" />
+    <rect x="58" y="48" width="7" height="28" rx="2" />
+  </g>
+  <path d="M25 62 L39 56 L51 50 L64 44" fill="none" stroke="#0891b2" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2 3" />
+
+  <!-- verification seal -->
+  <path
+    d="M96 30 l16 7 v14 c0 11 -7 18 -16 21 c-9 -3 -16 -10 -16 -21 V37 z"
+    fill="#047857"
+  />
+  <path d="M89 51 l5 5 l10 -11" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+  <g stroke="#0891b2" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.55">
+    <path d="M96 22 v-6" />
+    <path d="M112 26 l4 -4" />
+    <path d="M80 26 l-4 -4" />
+  </g>
+</svg>

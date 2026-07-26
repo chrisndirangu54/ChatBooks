@@ -47,6 +47,24 @@
   --viz-cat-1: #2a78d6;
   --viz-cat-2: #eb6834;
   --viz-cat-3: #4a3aa7;
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     Futuristic chrome — deep panels, glow, hairlines.
+
+     These are DECORATION ONLY and must never be used as a data mark. The series
+     palette above is validated against a white chart surface; a cyan bar would
+     both break that validation and let chrome colours impersonate a series.
+     Every ink value below clears WCAG AA (≥ 4.5:1) on both deep surfaces —
+     lowest is --fx-ink-muted at 7.52:1 on --fx-deep.
+     ───────────────────────────────────────────────────────────────────────── */
+  --fx-deep: #070e1c;
+  --fx-panel: #0f1a2e;
+  --fx-ink: #e2e8f0;
+  --fx-ink-muted: #94a3b8;
+  --fx-emerald: #34d399;
+  --fx-cyan: #22d3ee;
+  --fx-violet: #a78bfa;
+  --fx-hairline: rgba(148, 163, 184, 0.16);
 }
 
 body {
@@ -219,6 +237,122 @@ html.motion-ready .animate-cell-in {
 
 html.motion-ready .animate-pulse-ring {
   animation: viz-pulse-ring 2.4s ease-out infinite;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Futuristic surface effects.
+
+   All of it is painted with gradients rather than images, so there's nothing to
+   download and it scales to any panel size. The moving parts sit behind
+   `html.motion-ready` like everything else, so a static, fully-legible version
+   is what a reduced-motion visitor gets.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Technical grid. Two hairline gradients crossed — the mask fades it out toward
+   the edges so it reads as depth rather than as graph paper. */
+.fx-grid {
+  background-image:
+    linear-gradient(to right, var(--fx-hairline) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--fx-hairline) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 40%, transparent 100%);
+}
+
+/* Perspective floor: the same grid raked toward a horizon. */
+.fx-grid-floor {
+  background-image:
+    linear-gradient(to right, var(--fx-hairline) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--fx-hairline) 1px, transparent 1px);
+  background-size: 64px 64px;
+  transform: perspective(340px) rotateX(64deg);
+  transform-origin: bottom center;
+  mask-image: linear-gradient(to top, #000 5%, transparent 75%);
+}
+
+/* Aurora wash — the colour behind a deep panel. */
+.fx-aurora {
+  background:
+    radial-gradient(50% 60% at 18% 12%, rgba(16, 185, 129, 0.28), transparent 70%),
+    radial-gradient(45% 55% at 82% 8%, rgba(34, 211, 238, 0.22), transparent 70%),
+    radial-gradient(60% 60% at 60% 100%, rgba(167, 139, 250, 0.18), transparent 70%);
+  background-size: 180% 180%;
+}
+
+@keyframes fx-aurora-drift {
+  0%,
+  100% {
+    background-position: 0% 0%, 100% 0%, 50% 100%;
+  }
+  50% {
+    background-position: 12% 8%, 88% 6%, 40% 92%;
+  }
+}
+
+html.motion-ready .fx-aurora {
+  animation: fx-aurora-drift 22s ease-in-out infinite;
+}
+
+/* Scan beam — a single pass of light down a panel or illustration. */
+@keyframes fx-scan {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  12%,
+  60% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(320%);
+    opacity: 0;
+  }
+}
+
+html.motion-ready .animate-scan {
+  animation: fx-scan 4.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--scan-delay, 0ms);
+}
+
+/* Sheen — light travelling across a hairline border or edge. */
+@keyframes fx-sheen {
+  0% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+html.motion-ready .animate-sheen {
+  animation: fx-sheen 5.2s ease-in-out infinite;
+  animation-delay: var(--sheen-delay, 0ms);
+}
+
+/* Slow hover for illustrations and floating chips. */
+@keyframes fx-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+html.motion-ready .animate-float {
+  animation: fx-float 7s ease-in-out infinite;
+  animation-delay: var(--float-delay, 0ms);
+}
+
+/* A hairline that glows at one edge — used on deep panels and the dark navbar. */
+.fx-edge-glow {
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(52, 211, 153, 0.5),
+    rgba(34, 211, 238, 0.4),
+    transparent
+  );
 }
 
 /* Held-frame refresh: while data reloads, a chart card dims instead of

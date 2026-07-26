@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   MessageSquareText,
   Camera,
@@ -12,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { DeepPanelBackdrop, StatusChip } from "@/components/ui/DeepPanel";
 import { Parallax } from "@/components/ui/Parallax";
 import { Reveal } from "@/components/ui/Reveal";
 import { Sparkline } from "@/components/ui/Sparkline";
@@ -34,21 +36,29 @@ const FEATURES = [
     icon: MessageSquareText,
     title: "Chat-native logging",
     description: 'Text "Sold rice 1500" and it\'s saved — structured, categorized, instantly.',
+    image: "/img/feat-chat.svg",
+    imageAlt: "A typed chat line becoming a structured ledger entry",
   },
   {
     icon: Camera,
     title: "Receipts, read automatically",
     description: "Snap a photo of a supplier receipt and confirm the extracted amount in one tap.",
+    image: "/img/feat-receipt.svg",
+    imageAlt: "A supplier receipt being scanned, with its total extracted and confirmed",
   },
   {
     icon: Smartphone,
     title: "Mobile money aware",
     description: "Built for how businesses actually get paid — M-Pesa, MoMo, and cash side by side.",
+    image: "/img/feat-mobile.svg",
+    imageAlt: "A phone receiving mobile money alongside cash",
   },
   {
     icon: FileBarChart,
     title: "Loan-ready reports",
     description: "Every transaction compounds into a financial identity a lender can trust.",
+    image: "/img/feat-credit.svg",
+    imageAlt: "Records compounding into a lender-ready credit file",
   },
 ];
 
@@ -69,59 +79,68 @@ const PIPELINE = [
 export default function LandingPage() {
   return (
     <div className="flex-1 bg-white">
-      <header className="sticky top-0 z-40 border-b border-slate-100 bg-white/80 backdrop-blur-md">
+      {/* Persistent dark command bar — it stays deep as the page scrolls into the
+          light content below, which keeps the chrome consistent instead of
+          fading a translucent header over white cards. */}
+      <header className="sticky top-0 z-40 bg-[var(--fx-deep)]/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white">
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-slate-900">
               <MessageSquareText size={18} />
+              <span
+                aria-hidden
+                className="absolute inset-0 -z-10 rounded-xl bg-emerald-400/40 blur-md"
+              />
             </div>
-            <span className="text-lg font-semibold text-slate-900">ChatBooks</span>
+            <span className="text-lg font-semibold tracking-tight text-white">ChatBooks</span>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/login" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="text-sm font-medium text-slate-300 transition-colors hover:text-white">
               Log in
             </Link>
             <Link
               href="/signup"
-              className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm shadow-emerald-600/20 transition-colors hover:bg-emerald-700"
+              className="rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/20 transition-all hover:shadow-emerald-400/40"
             >
               Get started
             </Link>
           </div>
         </div>
+        <div aria-hidden className="fx-edge-glow h-px w-full opacity-60" />
       </header>
 
       {/* ── Hero ───────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden">
-        {/* Three decorative layers moving at different rates — that difference is
-            the parallax; each one is aria-hidden because none of it is content. */}
-        <Parallax speed={0.2} max={110} ariaHidden className="pointer-events-none absolute -left-32 -top-20">
-          <div className="h-96 w-96 rounded-full bg-emerald-100/70 blur-3xl animate-drift" />
+      <section className="relative isolate overflow-hidden bg-[var(--fx-deep)] text-[var(--fx-ink)]">
+        <DeepPanelBackdrop />
+
+        {/* Parallax glows on top of the backdrop, drifting at different rates. */}
+        <Parallax speed={0.2} max={110} ariaHidden className="pointer-events-none absolute -left-32 -top-24">
+          <div className="h-96 w-96 rounded-full bg-emerald-500/20 blur-3xl animate-drift" />
         </Parallax>
-        <Parallax speed={-0.14} max={90} ariaHidden className="pointer-events-none absolute -right-24 top-16">
-          <div className="h-80 w-80 rounded-full bg-teal-100/70 blur-3xl animate-drift" />
-        </Parallax>
-        <Parallax speed={0.08} max={60} ariaHidden className="pointer-events-none absolute bottom-0 left-1/3">
-          <div className="h-72 w-72 rounded-full bg-sky-50 blur-3xl" />
+        <Parallax speed={-0.14} max={90} ariaHidden className="pointer-events-none absolute -right-24 top-10">
+          <div className="h-80 w-80 rounded-full bg-cyan-400/15 blur-3xl animate-drift" />
         </Parallax>
 
-        <div className="relative mx-auto grid max-w-6xl gap-12 px-6 pt-16 pb-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-8">
+        <div className="relative mx-auto grid max-w-6xl gap-12 px-6 pt-16 pb-24 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-8">
           <div>
             <Reveal direction="up">
-              <p className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-600/10">
-                <Sparkles size={13} aria-hidden />
+              <StatusChip live className="mb-5">
+                <Sparkles size={12} aria-hidden />
                 Built for small businesses across Africa
-              </p>
+              </StatusChip>
             </Reveal>
 
             <Reveal direction="up" delay={80}>
-              <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-                Your accountant lives in <span className="text-emerald-700">WhatsApp</span>
+              <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                Your accountant lives in{" "}
+                <span className="bg-gradient-to-r from-emerald-300 via-emerald-400 to-cyan-300 bg-clip-text text-transparent">
+                  WhatsApp
+                </span>
               </h1>
             </Reveal>
 
             <Reveal direction="up" delay={160}>
-              <p className="mt-5 max-w-xl text-lg text-slate-500">
+              <p className="mt-5 max-w-xl text-lg text-slate-300">
                 Small business owners forget transactions, mix personal and business money, and
                 can&apos;t access credit. ChatBooks logs sales by chat, reads receipts automatically,
                 tracks mobile money, and prepares loan-ready financials — no spreadsheet required.
@@ -132,13 +151,14 @@ export default function LandingPage() {
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Link
                   href="/signup"
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-medium text-white shadow-sm shadow-emerald-600/25 transition-all hover:bg-emerald-700 hover:shadow-md"
+                  className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/25 transition-all hover:shadow-xl hover:shadow-emerald-400/40"
                 >
-                  Try the demo <ArrowRight size={16} />
+                  Try the demo
+                  <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
                 </Link>
                 <Link
                   href="/login"
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-slate-200 backdrop-blur-sm transition-colors hover:bg-white/10 hover:text-white"
                 >
                   I already have an account
                 </Link>
@@ -146,63 +166,91 @@ export default function LandingPage() {
             </Reveal>
           </div>
 
-          {/* Phone mock — the transcript types itself in on load. */}
-          <Reveal direction="right" delay={200}>
-            <Parallax speed={-0.06} max={40} className="mx-auto w-full max-w-sm">
-              <div className="rounded-[2rem] bg-slate-900 p-3 shadow-2xl shadow-slate-900/20">
-                <div className="rounded-[1.6rem] bg-[#e5ddd5] p-4">
-                  <div className="mb-3 flex items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 text-white">
-                    <div className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
-                      <MessageSquareText size={14} />
-                      <span
-                        aria-hidden
-                        className="absolute inset-0 rounded-full bg-white/40 animate-pulse-ring"
-                      />
-                    </div>
-                    <div className="leading-tight">
-                      <p className="text-xs font-semibold">ChatBooks</p>
-                      <p className="text-[10px] text-emerald-50/80">online</p>
-                    </div>
+          <div className="relative">
+            {/* Phone mock — the transcript types itself in on load. */}
+            <Reveal direction="right" delay={200}>
+              <Parallax speed={-0.06} max={40} className="relative mx-auto w-full max-w-sm">
+                <div className="relative rounded-[2rem] bg-slate-950/80 p-3 shadow-2xl shadow-black/60 ring-1 ring-white/10 backdrop-blur-sm">
+                  {/* Scan beam crossing the handset. */}
+                  <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-[2rem]">
+                    <div className="animate-scan h-16 w-full bg-gradient-to-b from-transparent via-cyan-300/20 to-transparent" />
                   </div>
 
-                  <div className="space-y-2">
-                    <Bubble side="out" delay={300}>
-                      Sold rice 1500
-                    </Bubble>
-                    <Bubble side="in" delay={700}>
-                      Saved — Sale: 1500 (Rice). Today&apos;s sales: 4,300.
-                    </Bubble>
-                    <Bubble side="out" delay={1100}>
-                      Bought stock 2300
-                    </Bubble>
-                    <Bubble side="in" delay={1500}>
-                      Saved — Expense: 2,300 (Inventory).
-                    </Bubble>
-                    <Bubble side="out" delay={1900}>
-                      How am I doing?
-                    </Bubble>
-                    <Bubble side="in" delay={2300}>
-                      This week: 15,000 in, 9,000 out. Profit 6,000. 📈
-                    </Bubble>
+                  <div className="relative rounded-[1.6rem] bg-[#e5ddd5] p-4">
+                    <div className="mb-3 flex items-center gap-2 rounded-xl bg-emerald-800 px-3 py-2 text-white">
+                      <div className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
+                        <MessageSquareText size={14} />
+                        <span
+                          aria-hidden
+                          className="absolute inset-0 rounded-full bg-white/40 animate-pulse-ring"
+                        />
+                      </div>
+                      <div className="leading-tight">
+                        <p className="text-xs font-semibold">ChatBooks</p>
+                        <p className="text-[10px] text-emerald-50/80">online</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Bubble side="out" delay={300}>
+                        Sold rice 1500
+                      </Bubble>
+                      <Bubble side="in" delay={700}>
+                        Saved — Sale: 1500 (Rice). Today&apos;s sales: 4,300.
+                      </Bubble>
+                      <Bubble side="out" delay={1100}>
+                        Bought stock 2300
+                      </Bubble>
+                      <Bubble side="in" delay={1500}>
+                        Saved — Expense: 2,300 (Inventory).
+                      </Bubble>
+                      <Bubble side="out" delay={1900}>
+                        How am I doing?
+                      </Bubble>
+                      <Bubble side="in" delay={2300}>
+                        This week: 15,000 in, 9,000 out. Profit 6,000. 📈
+                      </Bubble>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Parallax>
-          </Reveal>
+              </Parallax>
+            </Reveal>
+          </div>
         </div>
       </section>
 
       {/* ── Features ───────────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 pb-20">
+      <section className="mx-auto max-w-6xl px-6 pt-20 pb-20">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map((feature, index) => (
             <Reveal key={feature.title} direction="up" delay={index * 80}>
-              <div className="group h-full rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-100 transition-all hover:bg-white hover:shadow-md hover:ring-slate-200">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 transition-transform group-hover:scale-110">
-                  <feature.icon size={18} />
+              <div className="group relative h-full overflow-hidden rounded-2xl bg-white p-5 ring-1 ring-slate-200/70 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/5 hover:ring-emerald-600/25">
+                {/* Corner glow that warms up on hover. */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-emerald-200/50 to-cyan-200/40 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                />
+
+                <div className="relative">
+                  {/* Illustration. Decorative alongside the heading and body copy,
+                      but each carries a real alt string since it depicts the
+                      feature rather than repeating the title verbatim. */}
+                  <Image
+                    src={feature.image}
+                    alt={feature.imageAlt}
+                    width={128}
+                    height={96}
+                    className="mb-3 h-24 w-32 transition-transform duration-500 group-hover:scale-[1.04]"
+                  />
+
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/10">
+                      <feature.icon size={14} />
+                    </span>
+                    <h3 className="text-sm font-semibold text-slate-900">{feature.title}</h3>
+                  </div>
+                  <p className="text-sm text-slate-500">{feature.description}</p>
                 </div>
-                <h3 className="text-sm font-semibold text-slate-900">{feature.title}</h3>
-                <p className="mt-1.5 text-sm text-slate-500">{feature.description}</p>
               </div>
             </Reveal>
           ))}
@@ -218,16 +266,25 @@ export default function LandingPage() {
             </h2>
           </Reveal>
 
-          <div className="relative mt-12 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {/* The connector runs behind the steps on wide screens. */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute left-0 right-0 top-6 hidden h-px bg-gradient-to-r from-emerald-200 via-emerald-300 to-teal-200 lg:block"
+          {/* The flow as a standalone diagram. Deliberately narrower than the
+              step columns below: at full width its four nodes would land near
+              the column centres and imply a 1:1 mapping with the left-aligned
+              copy that doesn't actually hold. */}
+          <Reveal direction="up" delay={80}>
+            <Image
+              src="/img/pipeline.svg"
+              alt="A chat line moving through four stages: typed, structured, totalled, then turned into a credit file"
+              width={960}
+              height={120}
+              className="mx-auto mt-8 hidden w-full max-w-xl sm:block"
             />
+          </Reveal>
+
+          <div className="relative mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
             {PIPELINE.map((item, index) => (
               <Reveal key={item.step} direction="up" delay={index * 100}>
                 <div className="relative">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-sm font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-600/10">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--fx-deep)] text-sm font-semibold text-emerald-300 shadow-lg shadow-slate-900/10 ring-1 ring-white/10">
                     {item.step}
                   </div>
                   <h3 className="text-sm font-semibold text-slate-900">{item.title}</h3>
@@ -374,24 +431,39 @@ export default function LandingPage() {
       </section>
 
       {/* ── Closing CTA ────────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-3xl px-6 py-24 text-center">
+      <section className="mx-auto max-w-5xl px-6 py-24">
         <Reveal direction="scale">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-600 px-8 py-12 text-white shadow-xl shadow-emerald-900/15">
+          <div className="relative isolate overflow-hidden rounded-3xl bg-[var(--fx-deep)] px-8 py-14 text-white shadow-2xl shadow-slate-900/20 ring-1 ring-white/10">
+            <DeepPanelBackdrop />
             <Parallax speed={0.14} max={60} ariaHidden className="pointer-events-none absolute -right-20 -top-24">
-              <div className="h-72 w-72 rounded-full bg-white/10 blur-2xl animate-drift" />
+              <div className="h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl animate-drift" />
             </Parallax>
 
-            <div className="relative">
-              <h2 className="text-2xl font-semibold">
-                Users don&apos;t want software — they want someone to handle it.
-              </h2>
-              <p className="mt-2 text-emerald-50">That&apos;s the whole product: an assistant, not a tool.</p>
-              <Link
-                href="/signup"
-                className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-medium text-emerald-800 shadow-sm transition-all hover:bg-emerald-50 hover:shadow-md"
-              >
-                <CheckCircle2 size={16} /> Create your free account
-              </Link>
+            <div className="relative grid gap-10 md:grid-cols-[1.1fr_0.9fr] md:items-center">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight text-white">
+                  Users don&apos;t want software — they want someone to handle it.
+                </h2>
+                <p className="mt-2 text-slate-300">
+                  That&apos;s the whole product: an assistant, not a tool.
+                </p>
+                <Link
+                  href="/signup"
+                  className="mt-7 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/25 transition-all hover:shadow-xl hover:shadow-emerald-400/40"
+                >
+                  <CheckCircle2 size={16} /> Create your free account
+                </Link>
+              </div>
+
+              {/* The console illustration finally has room to be seen whole,
+                  rather than being clipped behind the hero's handset. */}
+              <Image
+                src="/img/hero-console.svg"
+                alt="A chat message resolving into structured figures, a rising chart, and an approved credit file"
+                width={480}
+                height={360}
+                className="mx-auto hidden w-full max-w-sm animate-float md:block"
+              />
             </div>
           </div>
         </Reveal>

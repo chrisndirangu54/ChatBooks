@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 96" width="128" height="96" role="img">
+  <title>A phone receiving mobile money alongside cash</title>
+  <defs>
+    <linearGradient id="fm-screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#047857" />
+      <stop offset="100%" stop-color="#0891b2" />
+    </linearGradient>
+  </defs>
+
+  <!-- handset -->
+  <rect x="40" y="10" width="48" height="76" rx="10" fill="#0f1a2e" />
+  <rect x="44" y="16" width="40" height="64" rx="6" fill="url(#fm-screen)" />
+  <rect x="56" y="12" width="16" height="3" rx="1.5" fill="#334155" />
+
+  <!-- on-screen balance -->
+  <rect x="50" y="24" width="20" height="3" rx="1.5" fill="#a7f3d0" />
+  <rect x="50" y="32" width="28" height="6" rx="3" fill="#ffffff" fill-opacity="0.9" />
+  <g fill="#ffffff" fill-opacity="0.35">
+    <rect x="50" y="46" width="28" height="3" rx="1.5" />
+    <rect x="50" y="54" width="22" height="3" rx="1.5" />
+    <rect x="50" y="62" width="25" height="3" rx="1.5" />
+  </g>
+
+  <!-- incoming transfer waves, left -->
+  <g stroke="#0891b2" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M30 40 a10 10 0 0 0 0 16" stroke-opacity="0.85" />
+    <path d="M22 34 a18 18 0 0 0 0 28" stroke-opacity="0.5" />
+    <path d="M14 28 a26 26 0 0 0 0 40" stroke-opacity="0.25" />
+  </g>
+
+  <!-- coins, right -->
+  <g>
+    <ellipse cx="106" cy="66" rx="13" ry="5" fill="#047857" fill-opacity="0.18" />
+    <rect x="93" y="52" width="26" height="12" rx="6" fill="#047857" fill-opacity="0.9" />
+    <rect x="93" y="44" width="26" height="12" rx="6" fill="#047857" />
+    <rect x="100" y="48" width="12" height="3" rx="1.5" fill="#a7f3d0" />
+  </g>
+</svg>

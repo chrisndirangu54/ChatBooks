@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import { VIZ } from "@/lib/viz";
 
 const WIDTH = 100;
@@ -24,15 +24,25 @@ export function Sparkline({
   color = VIZ.seq[3],
   /** Wash under the line. Off for dense tiles where it muddies the shape. */
   fill = true,
+  /**
+   * Colour of the ring around the end marker. It has to match whatever the
+   * sparkline actually sits on — the default light card, or a deep panel, where
+   * a white ring would read as a halo.
+   */
+  surface = VIZ.surface,
   delay = 0,
   className,
 }: {
   values: number[];
   color?: string;
   fill?: boolean;
+  surface?: string;
   delay?: number;
   className?: string;
 }) {
+  // Unique per instance: two tiles sharing a colour would otherwise emit the
+  // same gradient id twice, which is invalid and lets one steal the other's def.
+  const gradientId = `spark-${useId().replace(/:/g, "")}`;
   const geometry = useMemo(() => {
     if (values.length === 0) return null;
 
@@ -57,8 +67,6 @@ export function Sparkline({
   }, [values]);
 
   if (!geometry) return null;
-
-  const gradientId = `spark-${color.replace("#", "")}`;
 
   return (
     <svg
@@ -102,7 +110,7 @@ export function Sparkline({
         cy={geometry.last.y}
         r={2.5}
         fill={color}
-        stroke={VIZ.surface}
+        stroke={surface}
         strokeWidth={2}
         vectorEffect="non-scaling-stroke"
         className="animate-wash"

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" width="480" height="360" role="img" aria-label="">
+  <title>A ledger console: a chat message resolving into structured figures and a rising chart</title>
+  <defs>
+    <linearGradient id="hc-panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#12203a" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#0a1224" stop-opacity="0.95" />
+    </linearGradient>
+    <linearGradient id="hc-line" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="60%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#a78bfa" />
+    </linearGradient>
+    <linearGradient id="hc-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0" />
+    </linearGradient>
+    <radialGradient id="hc-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- ambient glow behind the console -->
+  <ellipse cx="250" cy="150" rx="220" ry="150" fill="url(#hc-glow)" />
+
+  <!-- main panel -->
+  <rect x="40" y="34" width="400" height="250" rx="18" fill="url(#hc-panel)" stroke="#22d3ee" stroke-opacity="0.28" />
+
+  <!-- panel chrome: window dots + label -->
+  <circle cx="62" cy="56" r="3.5" fill="#34d399" />
+  <circle cx="76" cy="56" r="3.5" fill="#22d3ee" fill-opacity="0.7" />
+  <circle cx="90" cy="56" r="3.5" fill="#a78bfa" fill-opacity="0.6" />
+  <rect x="330" y="49" width="90" height="14" rx="7" fill="#22d3ee" fill-opacity="0.1" />
+  <rect x="338" y="54" width="46" height="4" rx="2" fill="#67e8f9" fill-opacity="0.75" />
+
+  <!-- incoming chat line -->
+  <rect x="62" y="80" width="150" height="30" rx="14" fill="#059669" fill-opacity="0.9" />
+  <rect x="76" y="91" width="90" height="6" rx="3" fill="#d1fae5" fill-opacity="0.95" />
+
+  <!-- parsed fields, three chips -->
+  <g fill="#22d3ee" fill-opacity="0.1">
+    <rect x="62" y="124" width="86" height="26" rx="8" />
+    <rect x="156" y="124" width="72" height="26" rx="8" />
+    <rect x="236" y="124" width="94" height="26" rx="8" />
+  </g>
+  <g fill="#67e8f9" fill-opacity="0.85">
+    <rect x="72" y="134" width="42" height="5" rx="2.5" />
+    <rect x="166" y="134" width="34" height="5" rx="2.5" />
+    <rect x="246" y="134" width="52" height="5" rx="2.5" />
+  </g>
+
+  <!-- connector ticks from chat to chart -->
+  <g stroke="#a78bfa" stroke-opacity="0.5" stroke-width="1.5" stroke-linecap="round">
+    <path d="M105 150 L105 166" />
+    <path d="M192 150 L192 166" />
+    <path d="M283 150 L283 166" />
+  </g>
+
+  <!-- chart plot -->
+  <g stroke="#94a3b8" stroke-opacity="0.18" stroke-width="1">
+    <path d="M62 256 L418 256" />
+    <path d="M62 226 L418 226" />
+    <path d="M62 196 L418 196" />
+  </g>
+  <path
+    d="M62 240 L120 224 L178 232 L236 200 L294 208 L352 178 L418 186"
+    fill="none"
+    stroke="url(#hc-line)"
+    stroke-width="2.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M62 240 L120 224 L178 232 L236 200 L294 208 L352 178 L418 186 L418 256 L62 256 Z"
+    fill="url(#hc-fill)"
+  />
+  <circle cx="418" cy="186" r="5" fill="#34d399" stroke="#0a1224" stroke-width="2.5" />
+
+  <!-- floating badge: the credit outcome -->
+  <g>
+    <rect x="300" y="286" width="140" height="46" rx="14" fill="#0f1a2e" stroke="#34d399" stroke-opacity="0.45" />
+    <circle cx="324" cy="309" r="10" fill="#34d399" fill-opacity="0.16" />
+    <path d="M319 309 l4 4 l7 -8" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    <rect x="342" y="300" width="76" height="5" rx="2.5" fill="#e2e8f0" fill-opacity="0.85" />
+    <rect x="342" y="312" width="50" height="5" rx="2.5" fill="#94a3b8" fill-opacity="0.75" />
+  </g>
+
+  <!-- orbiting nodes -->
+  <g fill="#22d3ee">
+    <circle cx="46" cy="196" r="3" fill-opacity="0.7" />
+    <circle cx="452" cy="118" r="2.5" fill-opacity="0.55" />
+    <circle cx="426" cy="26" r="2" fill-opacity="0.45" />
+  </g>
+</svg>
