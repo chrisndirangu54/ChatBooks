@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   onSnapshot,
   orderBy,
@@ -15,17 +16,35 @@ const productsCollection = (uid: string) => collection(db, "businesses", uid, "p
 
 export type NewProduct = Omit<Product, "id">;
 
+/**
+ * `stock: null` means "stop tracking stock for this product" — distinct from
+ * omitting the key, which leaves the existing count alone. The distinction
+ * matters because an absent `stock` field is how a product declares itself
+ * unlimited, so clearing it has to actually remove the field.
+ */
+export type ProductUpdate = Partial<Omit<NewProduct, "stock">> & { stock?: number | null };
+
 export async function addProduct(uid: string, product: NewProduct): Promise<string> {
-  const ref = await addDoc(productsCollection(uid), product);
+  // Firestore rejects a write containing `undefined`, and an untracked product
+  // legitimately has no stock value.
+  const payload = Object.fromEntries(
+    Object.entries(product).filter(([, value]) => value !== undefined),
+  );
+  const ref = await addDoc(productsCollection(uid), payload);
   return ref.id;
 }
 
 export async function updateProduct(
   uid: string,
   id: string,
-  updates: Partial<NewProduct>,
+  updates: ProductUpdate,
 ): Promise<void> {
-  await updateDoc(doc(db, "businesses", uid, "products", id), updates);
+  const { stock, ...rest } = updates;
+  const payload: Record<string, unknown> = { ...rest };
+  if (stock === null) payload.stock = deleteField();
+  else if (stock !== undefined) payload.stock = stock;
+
+  await updateDoc(doc(db, "businesses", uid, "products", id), payload);
 }
 
 export async function deleteProduct(uid: string, id: string): Promise<void> {

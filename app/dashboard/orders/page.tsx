@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useDashboard } from "@/lib/dashboard-context";
 import { subscribeToOrders } from "@/lib/data/orders";
+import { requestEtimsRetry } from "@/lib/data/etims";
 import { formatMoney } from "@/lib/shop/format";
 import { timeAgo } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import type { Order, OrderStatus } from "@/types";
 
 const STATUS_TONE: Record<OrderStatus, "success" | "warning" | "danger" | "neutral"> = {
@@ -123,6 +125,17 @@ export default function OrdersPage() {
                   {order.status === "failed" && order.mpesa?.resultDesc && (
                     <p className="mt-1 text-xs text-slate-500">{order.mpesa.resultDesc}</p>
                   )}
+                  {order.oversold && order.oversold.length > 0 && (
+                    <p className="mt-1 text-xs font-medium text-red-600">
+                      Oversold: {order.oversold.join(", ")}
+                    </p>
+                  )}
+                  {order.reconciledAt && (
+                    // The customer paid but the callback never reached us; the
+                    // sweep found it. Worth saying, because these orders have
+                    // no M-Pesa code and that would otherwise look like a bug.
+                    <p className="mt-1 text-xs text-slate-500">Recovered by status check</p>
+                  )}
                 </td>
                 <td className="px-5 py-3.5">
                   <EtimsCell order={order} />
@@ -147,13 +160,26 @@ export default function OrdersPage() {
 
 function EtimsCell({ order }: { order: Order }) {
   const filing = order.etims;
-  if (!filing || filing.status === "not_filed") return <Badge tone="neutral">Not filed</Badge>;
+  const unfiled = !filing || filing.status === "not_filed";
+
+  if (unfiled) {
+    return (
+      <div>
+        <Badge tone="neutral">Not filed</Badge>
+        {order.status === "paid" && <RetryFilingButton orderId={order.id} />}
+      </div>
+    );
+  }
 
   if (filing.status === "failed") {
     return (
       <div>
         <Badge tone="danger">Failed</Badge>
         {filing.error && <p className="mt-1 max-w-48 text-xs text-slate-500">{filing.error}</p>}
+        {filing.attempts !== undefined && filing.attempts > 1 && (
+          <p className="text-xs text-slate-400">{filing.attempts} attempts</p>
+        )}
+        <RetryFilingButton orderId={order.id} />
       </div>
     );
   }
@@ -177,6 +203,35 @@ function EtimsCell({ order }: { order: Order }) {
       {filing.invoiceNumber && (
         <p className="mt-1 font-mono text-xs text-slate-500">{filing.invoiceNumber}</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Re-files an order with KRA.
+ *
+ * No optimistic update: the orders list is a live Firestore subscription, so
+ * the row re-renders on its own the moment the server writes the new filing.
+ * Faking it here would just risk showing "Filed" for something that wasn't.
+ */
+function RetryFilingButton({ orderId }: { orderId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleClick = async () => {
+    setBusy(true);
+    setError(null);
+    const result = await requestEtimsRetry(orderId);
+    if (!result.ok) setError(result.reason ?? "Filing failed.");
+    setBusy(false);
+  };
+
+  return (
+    <div className="mt-1.5">
+      <Button variant="secondary" size="sm" onClick={handleClick} disabled={busy}>
+        {busy ? "Filing…" : "Retry filing"}
+      </Button>
+      {error && <p className="mt-1 max-w-48 text-xs text-red-600">{error}</p>}
     </div>
   );
 }

@@ -173,7 +173,37 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 2. Handle "undo" / "delete last" command ────────────────────────────
+    // ── 2. Owner bookkeeping, or a customer shopping? ────────────────────────
+    //
+    // This fork runs BEFORE the "undo" command below, and the order is not
+    // cosmetic. That command matches a bare "cancel" and a bare "remove" —
+    // both of which are ordinary customer words here ("cancel" aborts an
+    // M-Pesa prompt, "remove" appears in cart edits). Interpreting them before
+    // knowing who is speaking would let a shopper delete the shopkeeper's last
+    // transaction.
+    const profile = await getProfile(targetUid);
+
+    if (phone && !isOwnerMessage(profile, phone)) {
+      const shopping = await handleShoppingMessage({
+        uid: targetUid,
+        profile,
+        phone,
+        text: text ?? "",
+        now: Date.now(),
+      });
+
+      console.log(
+        `[ChatBooks Webhook] Shopping turn for ${phone}${shopping.orderId ? ` → order ${shopping.orderId}` : ""}`,
+      );
+
+      return NextResponse.json({
+        success: true,
+        reply_text: shopping.replyText,
+        ...(shopping.orderId ? { order_id: shopping.orderId } : {}),
+      });
+    }
+
+    // ── 3. Handle "undo" / "delete last" command ────────────────────────────
     if (text && /^(undo|delete|delete last|remove|remove last|cancel)$/i.test(text.trim())) {
       const lastQuery = await adminDb
         .collection("businesses")
@@ -207,7 +237,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 3. Parse the transaction if not already done by the caller ──────────
+    // ── 4. Parse the transaction if not already done by the caller ──────────
     let transactionToSave: ParsedTransaction | null = parsedTransactionInput ?? null;
 
     if (!transactionToSave && text) {
@@ -222,7 +252,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 4. Save to Firestore via the Admin SDK ───────────────────────────────
+    // ── 5. Save to Firestore via the Admin SDK ───────────────────────────────
     const source: NewTransaction["source"] = imageUrl || isReceipt ? "receipt" : "chat";
     const transactionData: NewTransaction = {
       type: transactionToSave.type,
@@ -240,7 +270,7 @@ export async function POST(req: Request) {
       .collection("transactions")
       .add(transactionData);
 
-    // ── 5. Build friendly confirmation reply with Undo prompt ─────────────────
+    // ── 6. Build friendly confirmation reply with Undo prompt ─────────────────
     const formattedType = transactionToSave.type === "sale" ? "📈 Sale" : "📉 Expense";
     const formattedAmount = formatCurrency(transactionToSave.amount, currency);
     const noteText = transactionToSave.note ? ` — ${transactionToSave.note}` : "";

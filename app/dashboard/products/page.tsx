@@ -18,6 +18,28 @@ const TAX_LABEL = {
   exempt: "Exempt",
 } as const;
 
+/** Matches the threshold the WhatsApp catalog uses to say "only N left". */
+const LOW_STOCK = 5;
+
+function StockCell({ product }: { product: Product }) {
+  if (typeof product.stock !== "number") {
+    return <span className="text-sm text-slate-400">Not tracked</span>;
+  }
+  if (product.stock <= 0) return <Badge tone="danger">Sold out</Badge>;
+  if (product.stock <= LOW_STOCK) return <Badge tone="warning">{product.stock} left</Badge>;
+  return <span className="tabular-nums text-sm text-slate-700">{product.stock}</span>;
+}
+
+function StockLegend() {
+  return (
+    <p className="text-xs text-slate-500">
+      Stock drops when an order is <em>paid</em>, not when it&apos;s added to a cart — an abandoned
+      cart never holds your stock hostage. Products at zero disappear from the WhatsApp catalog
+      until you restock them here.
+    </p>
+  );
+}
+
 export default function ProductsPage() {
   const { user } = useAuth();
   const { profile } = useDashboard();
@@ -45,14 +67,23 @@ export default function ProductsPage() {
     itemClassificationCode: values.itemClassificationCode || "",
   });
 
+  /** "" → not tracked. On update that has to clear the field, not skip it. */
+  const stockValue = (values: ProductFormValues): number | null =>
+    values.stock.trim() === "" ? null : Math.max(0, Math.floor(Number(values.stock)));
+
   const handleCreate = async (values: ProductFormValues) => {
     if (!user) return;
-    await addProduct(user.uid, { ...toDoc(values), createdAt: Date.now() });
+    const stock = stockValue(values);
+    await addProduct(user.uid, {
+      ...toDoc(values),
+      createdAt: Date.now(),
+      ...(stock === null ? {} : { stock }),
+    });
   };
 
   const handleUpdate = async (values: ProductFormValues) => {
     if (!user || !editing) return;
-    await updateProduct(user.uid, editing.id, toDoc(values));
+    await updateProduct(user.uid, editing.id, { ...toDoc(values), stock: stockValue(values) });
     setEditing(null);
   };
 
@@ -93,6 +124,7 @@ export default function ProductsPage() {
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
               <th className="px-5 py-3">Product</th>
+              <th className="px-5 py-3">Stock</th>
               <th className="px-5 py-3">VAT</th>
               <th className="px-5 py-3">KRA code</th>
               <th className="px-5 py-3">Status</th>
@@ -103,14 +135,14 @@ export default function ProductsPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
                   Loading…
                 </td>
               </tr>
             )}
             {!loading && products.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
                   No products yet — add one and it appears in the WhatsApp catalog straight away.
                 </td>
               </tr>
@@ -120,6 +152,9 @@ export default function ProductsPage() {
                 <td className="px-5 py-3.5">
                   <p className="font-medium text-slate-900">{product.name}</p>
                   {product.unit && <p className="text-xs text-slate-500">{product.unit}</p>}
+                </td>
+                <td className="px-5 py-3.5">
+                  <StockCell product={product} />
                 </td>
                 <td className="px-5 py-3.5 text-slate-600">{TAX_LABEL[product.taxCategory]}</td>
                 <td className="px-5 py-3.5">
@@ -169,6 +204,8 @@ export default function ProductsPage() {
           </tbody>
         </table>
       </div>
+
+      <StockLegend />
 
       <ProductFormModal
         open={modalOpen}

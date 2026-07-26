@@ -46,10 +46,49 @@ cart        → review
 pay         → M-Pesa STK push; enter PIN on the handset
 ```
 
-On payment, one Firestore transaction marks the order paid *and* writes the
-matching sale to the books, so the two can't drift apart. Daraja retries any
-callback it doesn't get a 200 for, so that step re-reads the order status and
-does nothing if it has already run.
+On payment, one Firestore transaction marks the order paid, writes the matching
+sale to the books, *and* decrements stock — so those three can't drift apart.
+Daraja retries any callback it doesn't get a 200 for, so that step re-reads the
+order status and does nothing if it has already run.
+
+The whole lifecycle lives in [`lib/purchase/pipeline.ts`](lib/purchase/pipeline.ts):
+checkout → push → settle → book → file → notify.
+
+### When the callback never arrives
+
+Daraja callbacks get lost — a redeploy mid-flight, a timeout, a network blip.
+The order then sits in `awaiting_payment` while the customer's money is gone and
+the sale is missing from the books, silently, which is the worst part.
+
+`POST /api/mpesa/reconcile` asks Daraja directly about anything pending too long
+and pushes the answer through the *same* settlement path a callback would have
+taken. Run it every 5–15 minutes. On Vercel:
+
+```json
+{ "crons": [{ "path": "/api/mpesa/reconcile", "schedule": "*/10 * * * *" }] }
+```
+
+Elsewhere, any cron that can make an HTTP GET or POST works — pass
+`?token=$RECONCILE_TOKEN`. Recovered orders are labelled **Recovered by status
+check** in the dashboard, because the status query returns no M-Pesa code and
+an empty receipt field would otherwise look like a bug.
+
+### Stock
+
+Set a count on a product and it drops when an order is **paid**, not when it's
+added to a cart — an abandoned cart never holds stock hostage. Sold-out items
+vanish from the catalog, and low counts show as "only 3 left".
+
+A product with no stock value is **not tracked**, not zero. That distinction is
+load-bearing: reading a missing field as zero would have emptied every existing
+catalog on deploy.
+
+Stock is checked twice — when items go in the cart, and again immediately before
+charging. The second check is the one that matters, since minutes may pass and
+someone else may buy the last bag. If a sale still lands past the count, the
+order is flagged **Oversold** and the owner gets a WhatsApp alert: a callback
+can't reverse an M-Pesa payment, so the only useful response is to put it in
+front of the person who can refund or restock.
 
 ### Setup
 
@@ -59,8 +98,13 @@ does nothing if it has already run.
 3. Fill in the `MPESA_*` variables in `.env.local` (see `.env.local.example`).
    Register the callback URL with the token on it:
    `https://your-host/api/mpesa/callback?token=…`
-4. Redeploy the Firestore rules — orders, products, sessions and the M-Pesa
-   checkout index are all new.
+4. Set `RECONCILE_TOKEN` and point a cron at `/api/mpesa/reconcile`.
+5. Redeploy the Firestore **rules and indexes** — orders, products, sessions and
+   the M-Pesa checkout index are all new, and the reconciliation sweep needs the
+   composite index or it throws `FAILED_PRECONDITION` and recovers nothing:
+   ```bash
+   firebase deploy --only firestore:rules,firestore:indexes,storage:rules
+   ```
 
 ### eTIMS
 
@@ -70,6 +114,11 @@ the dashboard labels those orders **Simulated** rather than Filed. Nothing is
 sent to KRA. Once you're onboarded, add a provider that POSTs `invoice` to your
 OSCU/VSCU endpoint and select it with `ETIMS_PROVIDER` — the payment path
 doesn't change.
+
+A filing that fails doesn't fail the payment — the money has already moved, so
+the order is flagged and the orders page grows a **Retry filing** button
+(`POST /api/etims/retry`, authenticated with a Firebase ID token; it files for
+the token's own uid, never one supplied in the body).
 
 Two things in `lib/etims/mapping.ts` are taxpayer-specific and must be checked
 against the code list issued with your onboarding: the tax-type letters
@@ -84,7 +133,8 @@ npm test
 ```
 
 Runs the pure modules — VAT math, the shopping state machine, the Daraja wire
-format and callback parser, the eTIMS mapping — under `node --test`. No
+format and callback parser, the eTIMS mapping, the reconciliation policy — under
+`node --test`. No
 Firebase emulator or Daraja sandbox account needed: every one of those modules
 returns the side effect it wants as data and lets a route handler perform it,
 which is what keeps a state machine that can charge a customer safe to run in

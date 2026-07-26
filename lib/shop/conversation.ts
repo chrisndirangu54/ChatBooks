@@ -56,6 +56,9 @@ export interface ShopTurnInput {
 /** Guards against a fat-fingered "1x9999" becoming a real M-Pesa charge. */
 const MAX_QUANTITY = 999;
 
+/** Show a remaining count only at or below this, so it reads as urgency. */
+const LOW_STOCK_NOTICE = 5;
+
 /**
  * The catalog as the customer sees it: active items only, in a stable order.
  *
@@ -65,9 +68,20 @@ const MAX_QUANTITY = 999;
  */
 export function visibleCatalog(catalog: Product[]): Product[] {
   return catalog
-    .filter((product) => product.active)
+    .filter((product) => product.active && availableStock(product) !== 0)
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+/**
+ * Units available, or `null` when the product doesn't track stock.
+ *
+ * `null` and `0` must never be conflated: null means "sell as many as they
+ * ask for", zero means "don't sell this at all".
+ */
+export function availableStock(product: Product): number | null {
+  if (typeof product.stock !== "number") return null;
+  return Math.max(0, Math.floor(product.stock));
 }
 
 export function parseCommand(text: string): ShopCommand {
@@ -103,10 +117,13 @@ function renderCatalog(catalog: Product[], businessName: string, currency: strin
     return `🛒 *${businessName}*\n\nThe catalog is empty right now — please check back shortly.`;
   }
 
-  const lines = catalog.map(
-    (product, index) =>
-      `${index + 1}. ${product.name}${product.unit ? ` (${product.unit})` : ""} — ${formatMoney(product.price, currency)}`,
-  );
+  const lines = catalog.map((product, index) => {
+    const remaining = availableStock(product);
+    // Only surface a count when it's low enough to matter. "3 left" nudges;
+    // "247 left" is noise on a phone screen.
+    const scarcity = remaining !== null && remaining <= LOW_STOCK_NOTICE ? ` — only ${remaining} left` : "";
+    return `${index + 1}. ${product.name}${product.unit ? ` (${product.unit})` : ""} — ${formatMoney(product.price, currency)}${scarcity}`;
+  });
 
   return [
     `🛒 *${businessName}*`,
@@ -212,11 +229,32 @@ export function handleCustomerMessage(input: ShopTurnInput): ShopTurn {
         return stay(`Please choose a quantity between 1 and ${MAX_QUANTITY}.`);
       }
 
-      const items = addToCart(session.items, product, command.quantity);
+      // Cap against what's left, counting what this customer is already
+      // holding. Refusing here is far kinder than taking the money and
+      // discovering the shortfall at settlement.
+      const remaining = availableStock(product);
+      const alreadyInCart = session.items.find((i) => i.productId === product.id)?.quantity ?? 0;
+      const grantable =
+        remaining === null ? command.quantity : Math.max(0, remaining - alreadyInCart);
+
+      if (grantable === 0) {
+        return stay(
+          remaining === 0
+            ? `Sorry, ${product.name} is out of stock.`
+            : `You already have all ${remaining} of the ${product.name} we have left in your cart.`,
+        );
+      }
+
+      const granted = Math.min(command.quantity, grantable);
+      const items = addToCart(session.items, product, granted);
       const { total } = totalsFor(items);
+
       return stay(
         [
-          `Added ${command.quantity} × ${product.name} ✅`,
+          `Added ${granted} × ${product.name} ✅`,
+          ...(granted < command.quantity
+            ? [`(that's all ${granted} we had left)`]
+            : []),
           `Cart total: ${formatMoney(total, currency)}`,
           "",
           "Reply with another number to keep shopping, or *PAY* to pay by M-Pesa.",

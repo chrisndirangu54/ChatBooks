@@ -56,6 +56,15 @@ export interface Product {
   /** KRA item classification code. Required by eTIMS; blank until set. */
   itemClassificationCode?: string;
   taxCategory: TaxCategory;
+  /**
+   * Units on hand.
+   *
+   * `undefined` means **not tracked**, and that distinction carries weight:
+   * every product that existed before stock was added has no value here, and
+   * reading a missing field as 0 would empty the whole catalog the moment this
+   * shipped. Only an explicit number gates availability.
+   */
+  stock?: number;
 }
 
 export interface OrderItem {
@@ -94,6 +103,8 @@ export interface EtimsFiling {
   error?: string;
   /** Which provider filed it — "stub" until real credentials are wired. */
   provider?: string;
+  /** How many times filing has been attempted, including retries. */
+  attempts?: number;
 }
 
 export interface Order {
@@ -115,6 +126,26 @@ export interface Order {
   etims?: EtimsFiling;
   /** Ledger entry created when payment landed — links order to books. */
   transactionId?: string;
+  /**
+   * Stock has been decremented for this order. Guards the decrement against
+   * running twice if the order is ever settled by both a callback and the
+   * reconciliation sweep.
+   */
+  stockAdjusted?: boolean;
+  /**
+   * Names of lines that took stock below zero.
+   *
+   * Payment has already been taken by the time stock is decremented, and a
+   * callback cannot un-take an M-Pesa payment — so an oversell is recorded for
+   * the shopkeeper to refund or restock rather than silently clamped.
+   */
+  oversold?: string[];
+  /**
+   * Set when the outcome came from polling Daraja rather than from a callback,
+   * i.e. the callback was lost. Such an order has no M-Pesa receipt number,
+   * because the status query doesn't return one.
+   */
+  reconciledAt?: number;
 }
 
 /** Where a given customer is in the ordering conversation. */

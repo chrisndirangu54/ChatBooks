@@ -15,6 +15,12 @@ export interface ProductFormValues {
   taxCategory: TaxCategory;
   itemClassificationCode: string;
   active: boolean;
+  /**
+   * Kept as a string, not a number, because "" and "0" are different answers:
+   * blank means don't track stock at all, zero means sold out. A numeric field
+   * can't hold that distinction.
+   */
+  stock: string;
 }
 
 const EMPTY: ProductFormValues = {
@@ -24,6 +30,7 @@ const EMPTY: ProductFormValues = {
   taxCategory: "vat_16",
   itemClassificationCode: "",
   active: true,
+  stock: "",
 };
 
 function valuesFor(initial?: Product | null): ProductFormValues {
@@ -35,6 +42,7 @@ function valuesFor(initial?: Product | null): ProductFormValues {
     taxCategory: initial.taxCategory,
     itemClassificationCode: initial.itemClassificationCode ?? "",
     active: initial.active,
+    stock: typeof initial.stock === "number" ? String(initial.stock) : "",
   };
 }
 
@@ -115,6 +123,26 @@ function ProductForm({
             placeholder="1kg"
           />
         </div>
+      </div>
+
+      <div>
+        <Label htmlFor="product-stock">Stock on hand</Label>
+        <Input
+          id="product-stock"
+          type="number"
+          min={0}
+          step="1"
+          value={values.stock}
+          onChange={(e) => setValues({ ...values, stock: e.target.value })}
+          placeholder="Leave blank to not track"
+        />
+        <p className="mt-1.5 text-xs text-slate-500">
+          {values.stock.trim() === ""
+            ? "Not tracked — customers can order any quantity."
+            : Number(values.stock) === 0
+              ? "Sold out. Hidden from the WhatsApp catalog until you restock."
+              : `Customers can order up to ${Number(values.stock)}; each paid order reduces this.`}
+        </p>
       </div>
 
       <div>

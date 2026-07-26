@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { handleCustomerMessage, newSession, parseCommand, visibleCatalog } from "./conversation.ts";
+import {
+  availableStock,
+  handleCustomerMessage,
+  newSession,
+  parseCommand,
+  visibleCatalog,
+} from "./conversation.ts";
 import type { Product, ShopSession } from "@/types";
 
 const CATALOG: Product[] = [
@@ -173,6 +179,74 @@ test("the input session is never mutated", () => {
   });
   assert.deepEqual(session.items, []);
   assert.equal(session.state, "browsing");
+});
+
+// ── Stock ──────────────────────────────────────────────────────────────────
+
+const STOCKED: Product[] = [
+  { id: "s1", name: "Amchi", price: 100, active: true, createdAt: 0, taxCategory: "vat_16", stock: 3 },
+  { id: "s2", name: "Bamia", price: 50, active: true, createdAt: 0, taxCategory: "vat_16", stock: 0 },
+  { id: "s3", name: "Chumvi", price: 30, active: true, createdAt: 0, taxCategory: "vat_16" },
+];
+
+function stockedTurn(text: string, session: ShopSession = newSession("254700000001", NOW)) {
+  return handleCustomerMessage({
+    session,
+    catalog: STOCKED,
+    text,
+    businessName: "Mama Njeri Shop",
+    currency: "KES",
+    now: NOW,
+  });
+}
+
+test("a product with no stock field is treated as unlimited, not as zero", () => {
+  // Every product predating stock tracking has no value here. Reading the
+  // missing field as 0 would empty the catalog on deploy.
+  assert.equal(availableStock(STOCKED[2]), null);
+  assert.equal(
+    visibleCatalog(STOCKED).some((p) => p.name === "Chumvi"),
+    true,
+  );
+});
+
+test("a sold-out product is hidden from the catalog", () => {
+  assert.deepEqual(
+    visibleCatalog(STOCKED).map((p) => p.name),
+    ["Amchi", "Chumvi"],
+  );
+});
+
+test("an untracked product can be ordered in any quantity", () => {
+  const { session } = stockedTurn("2x50"); // Chumvi, untracked
+  assert.equal(session.items[0].quantity, 50);
+});
+
+test("a request beyond stock is capped rather than refused outright", () => {
+  const { session, reply } = stockedTurn("1x10"); // Amchi, 3 on hand
+  assert.equal(session.items[0].quantity, 3);
+  assert.match(reply, /all 3 we had left/);
+});
+
+test("stock is counted against what's already in the cart", () => {
+  let session = newSession("254700000001", NOW);
+  session = stockedTurn("1x2", session).session;
+  const second = stockedTurn("1x2", session);
+  assert.equal(second.session.items[0].quantity, 3); // 2 + 1, not 2 + 2
+});
+
+test("asking for more once the cart already holds every unit is refused", () => {
+  let session = newSession("254700000001", NOW);
+  session = stockedTurn("1x3", session).session;
+  const third = stockedTurn("1", session);
+  assert.equal(third.session.items[0].quantity, 3);
+  assert.match(third.reply, /already have all 3/);
+});
+
+test("low stock is flagged in the catalog, plentiful stock is not", () => {
+  const { reply } = stockedTurn("menu");
+  assert.match(reply, /Amchi.*only 3 left/);
+  assert.doesNotMatch(reply, /Chumvi.*left/);
 });
 
 test("an empty catalog says so instead of rendering a bare header", () => {

@@ -1,14 +1,7 @@
 import { handleCustomerMessage, newSession } from "@/lib/shop/conversation";
-import { formatMoney } from "@/lib/shop/format";
-import { isMpesaConfigured, stkPush } from "@/lib/mpesa/daraja";
 import { normalizeMsisdn } from "@/lib/mpesa/wire";
-import {
-  attachCheckout,
-  createOrder,
-  getSession,
-  listProducts,
-  saveSession,
-} from "@/lib/server/shop-repo";
+import { startCheckout } from "@/lib/purchase/pipeline";
+import { getSession, listProducts, saveSession } from "@/lib/server/shop-repo";
 import type { BusinessProfile } from "@/types";
 
 /**
@@ -16,7 +9,8 @@ import type { BusinessProfile } from "@/types";
  * whatever side effect it asked for.
  *
  * All the branching logic lives in `lib/shop/conversation.ts` where it's
- * tested; this is the thin shell that talks to Firestore, Daraja and WhatsApp.
+ * tested, and everything downstream of "they want to pay" lives in
+ * `lib/purchase/pipeline.ts`. This is the thin seam between them.
  *
  * **Import from route handlers only** — reaches the Admin SDK and Daraja.
  */
@@ -35,7 +29,6 @@ export async function handleShoppingMessage(input: {
   now: number;
 }): Promise<ShoppingReply> {
   const { uid, profile, text, now } = input;
-  const currency = profile?.currency || "KES";
 
   // The session key must be one canonical form, or a customer who appears as
   // 254712… on one message and 0712… on the next gets two carts.
@@ -49,7 +42,7 @@ export async function handleShoppingMessage(input: {
     catalog,
     text,
     businessName: profile?.businessName || "our shop",
-    currency,
+    currency: profile?.currency || "KES",
     now,
   });
 
@@ -58,55 +51,23 @@ export async function handleShoppingMessage(input: {
     return { replyText: turn.reply };
   }
 
-  if (!isMpesaConfigured()) {
-    // Leave the cart intact and in "cart" state — this is our problem, not the
-    // customer's, and their basket shouldn't pay for it.
-    await saveSession(uid, { ...session, state: "cart", updatedAt: now });
-    return {
-      replyText:
-        "Sorry — M-Pesa payments aren't switched on for this shop yet. Your cart is saved.",
-    };
-  }
-
-  const { items, totals } = turn.action;
-
-  const order = await createOrder(uid, {
-    customerPhone: phone,
-    items,
-    total: totals.total,
-    taxTotal: totals.taxTotal,
-    netTotal: totals.netTotal,
-    now,
-  });
-
-  const push = await stkPush({
-    phone,
-    amount: totals.total,
-    // Both fields are truncated by Safaricom, so the order id goes in the
-    // reference (where it's needed for reconciliation) rather than the desc.
-    accountReference: order.id,
-    description: "Order",
-  });
-
-  if (!push.ok) {
-    console.error(`[ChatBooks Shop] STK push failed for order ${order.id}: ${push.error}`);
-    await saveSession(uid, { ...session, state: "cart", updatedAt: now });
-    return {
-      replyText: `Sorry, the M-Pesa request didn't go through (${push.error}).\n\nYour cart is saved — reply *PAY* to try again.`,
-      orderId: order.id,
-    };
-  }
-
-  await attachCheckout(
+  const checkout = await startCheckout({
     uid,
-    order.id,
-    { merchantRequestId: push.merchantRequestId, checkoutRequestId: push.checkoutRequestId },
+    profile,
+    phone,
+    items: turn.action.items,
+    totals: turn.action.totals,
     now,
-  );
-  await saveSession(uid, { ...turn.session, orderId: order.id });
+  });
 
-  return {
-    replyText: `${turn.reply}\n\nAmount: ${formatMoney(totals.total, currency)}`,
-    orderId: order.id,
-  };
+  if (!checkout.ok) {
+    // Roll the session back to "cart" rather than leaving it awaiting a
+    // payment that was never requested — otherwise the customer is stuck being
+    // told to enter a PIN for a prompt that doesn't exist.
+    await saveSession(uid, { ...session, state: "cart", updatedAt: now });
+    return { replyText: checkout.message, orderId: checkout.order?.id };
+  }
+
+  await saveSession(uid, { ...turn.session, orderId: checkout.order?.id });
+  return { replyText: checkout.message, orderId: checkout.order?.id };
 }

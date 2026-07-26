@@ -146,6 +146,8 @@ export interface MarkPaidResult {
   /** True when the callback was a duplicate and nothing was written. */
   alreadyPaid: boolean;
   transactionId: string;
+  /** Line names that took stock below zero — needs a refund or a restock. */
+  oversold: string[];
 }
 
 /**
@@ -165,6 +167,7 @@ export async function markOrderPaid(
   orderId: string,
   payment: MpesaPayment,
   now: number,
+  options: { reconciled?: boolean } = {},
 ): Promise<MarkPaidResult | null> {
   const orderRef = business(uid).collection("orders").doc(orderId);
   const transactionRef = business(uid).collection("transactions").doc();
@@ -180,7 +183,30 @@ export async function markOrderPaid(
         order,
         alreadyPaid: true,
         transactionId: order.transactionId ?? "",
+        oversold: order.oversold ?? [],
       };
+    }
+
+    // Firestore requires every read in a transaction to precede every write,
+    // so the product docs are fetched here rather than inside the loop below.
+    const productIds = [...new Set(order.items.map((item) => item.productId))];
+    const productRefs = productIds.map((id) => business(uid).collection("products").doc(id));
+    const productSnaps = productRefs.length ? await tx.getAll(...productRefs) : [];
+
+    const stockWrites: Array<{ id: string; stock: number }> = [];
+    const oversold: string[] = [];
+
+    for (const item of order.items) {
+      const snap = productSnaps.find((doc) => doc.id === item.productId);
+      const current = snap?.exists ? (snap.data() as Product).stock : undefined;
+
+      // Untracked stock stays untracked — writing a number here would silently
+      // opt a product into tracking on its first sale.
+      if (typeof current !== "number") continue;
+
+      const next = current - item.quantity;
+      if (next < 0) oversold.push(item.name);
+      stockWrites.push({ id: item.productId, stock: Math.max(0, next) });
     }
 
     const ledgerEntry: NewTransaction = {
@@ -194,17 +220,33 @@ export async function markOrderPaid(
     };
 
     tx.set(transactionRef, ledgerEntry);
-    tx.update(orderRef, {
-      status: "paid",
-      mpesa: prune({ ...order.mpesa, ...payment }),
-      transactionId: transactionRef.id,
-      updatedAt: now,
-    });
+    for (const write of stockWrites) {
+      tx.update(business(uid).collection("products").doc(write.id), { stock: write.stock });
+    }
+    tx.update(
+      orderRef,
+      prune({
+        status: "paid",
+        mpesa: prune({ ...order.mpesa, ...payment }),
+        transactionId: transactionRef.id,
+        stockAdjusted: true,
+        oversold: oversold.length ? oversold : undefined,
+        reconciledAt: options.reconciled ? now : undefined,
+        updatedAt: now,
+      }),
+    );
 
     return {
-      order: { ...order, status: "paid", transactionId: transactionRef.id },
+      order: {
+        ...order,
+        status: "paid",
+        transactionId: transactionRef.id,
+        stockAdjusted: true,
+        ...(oversold.length ? { oversold } : {}),
+      },
       alreadyPaid: false,
       transactionId: transactionRef.id,
+      oversold,
     };
   });
 }
@@ -236,6 +278,68 @@ export async function markOrderFailed(
   });
 
   return { ...order, status: "failed" };
+}
+
+/**
+ * Orders still waiting on a payment result, oldest first, across every
+ * business.
+ *
+ * A collection-group query is the right shape here specifically *because* this
+ * runs on a schedule rather than per-request: it's one indexed query for the
+ * whole sweep instead of one per tenant, and the cost doesn't scale with the
+ * number of shops signed up. Needs the composite index in
+ * `firestore.indexes.json`.
+ */
+export async function findStaleAwaitingOrders(
+  olderThan: number,
+  limit: number,
+): Promise<Array<{ uid: string; order: Order }>> {
+  const snapshot = await adminDb
+    .collectionGroup("orders")
+    .where("status", "==", "awaiting_payment")
+    .where("createdAt", "<", olderThan)
+    .orderBy("createdAt")
+    .limit(limit)
+    .get();
+
+  return snapshot.docs
+    .map((doc) => {
+      // businesses/{uid}/orders/{orderId} — the grandparent is the business.
+      const uid = doc.ref.parent.parent?.id;
+      if (!uid) return null;
+      return { uid, order: { id: doc.id, ...doc.data() } as Order };
+    })
+    .filter((entry): entry is { uid: string; order: Order } => entry !== null);
+}
+
+/**
+ * Give up on a payment that never resolved.
+ *
+ * Distinct from `markOrderFailed` only in the reason recorded: nothing was
+ * declined, we simply stopped asking. Worth keeping separate so a shopkeeper
+ * reading the orders list can tell "the customer cancelled" from "we lost
+ * track of it".
+ */
+export async function markOrderExpired(
+  uid: string,
+  orderId: string,
+  now: number,
+): Promise<Order | null> {
+  const orderRef = business(uid).collection("orders").doc(orderId);
+  const snapshot = await orderRef.get();
+  if (!snapshot.exists) return null;
+
+  const order = { id: snapshot.id, ...snapshot.data() } as Order;
+  if (order.status !== "awaiting_payment") return order;
+
+  await orderRef.update({
+    status: "cancelled",
+    mpesa: prune({ ...order.mpesa, resultDesc: "No payment result after repeated checks" }),
+    reconciledAt: now,
+    updatedAt: now,
+  });
+
+  return { ...order, status: "cancelled" };
 }
 
 // ── eTIMS ──────────────────────────────────────────────────────────────────

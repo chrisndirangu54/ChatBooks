@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "//": "Required by the reconciliation sweep in lib/purchase/pipeline.ts, which asks 'which orders across every business are still awaiting payment and old enough to chase?'. COLLECTION_GROUP scope is what lets one query cover all tenants instead of one query per shop. Without this index the sweep throws a FAILED_PRECONDITION and lost callbacks are never recovered.",
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
