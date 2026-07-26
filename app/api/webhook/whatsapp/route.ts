@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
-import { transactionAI } from "@/lib/ai";
+// Server provider, not the client-safe one from "@/lib/ai": this route already
+// runs on the server, so it calls Claude directly instead of making an
+// authenticated HTTP round-trip back into our own app.
+import { serverTransactionAI } from "@/lib/ai/server";
 import { adminDb } from "@/lib/firebase-admin";
 import type { NewTransaction } from "@/lib/data/transactions";
 import type { ParsedTransaction } from "@/types";
@@ -142,7 +145,7 @@ export async function POST(req: Request) {
     let transactionToSave: ParsedTransaction | null = parsedTransactionInput ?? null;
 
     if (!transactionToSave && text) {
-      transactionToSave = await transactionAI.parseMessage(text, []);
+      transactionToSave = await serverTransactionAI.parseMessage(text, []);
     }
 
     if (!transactionToSave) {
