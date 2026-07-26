@@ -57,7 +57,7 @@ export default function SettingsPage() {
     <div className="max-w-2xl space-y-6">
       {profile ? (
         <BusinessProfileForm
-          key={profile.businessName + profile.ownerName + profile.currency}
+          key={[profile.businessName, profile.ownerName, profile.currency, profile.ownerPhone, profile.kraPin].join("|")}
           profile={profile}
           onSaved={refreshProfile}
         />
@@ -170,6 +170,8 @@ function BusinessProfileForm({
   const [businessName, setBusinessName] = useState(profile.businessName);
   const [ownerName, setOwnerName] = useState(profile.ownerName);
   const [currency, setCurrency] = useState(profile.currency);
+  const [ownerPhone, setOwnerPhone] = useState(profile.ownerPhone ?? "");
+  const [kraPin, setKraPin] = useState(profile.kraPin ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -177,7 +179,13 @@ function BusinessProfileForm({
     if (!user) return;
     setSaving(true);
     try {
-      await updateBusinessProfile(user.uid, { businessName, ownerName, currency });
+      await updateBusinessProfile(user.uid, {
+        businessName,
+        ownerName,
+        currency,
+        ownerPhone: ownerPhone.trim(),
+        kraPin: kraPin.trim(),
+      });
       onSaved();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -207,6 +215,32 @@ function BusinessProfileForm({
               </option>
             ))}
           </Select>
+        </div>
+        <div>
+          <Label>Your WhatsApp number</Label>
+          <Input
+            value={ownerPhone}
+            onChange={(e) => setOwnerPhone(e.target.value)}
+            placeholder="0712345678"
+          />
+          {/* This one field is what splits the shop's single WhatsApp number
+              into two behaviours, so it's worth spelling out. */}
+          <p className="mt-1.5 text-xs text-slate-500">
+            {ownerPhone.trim()
+              ? "Messages from this number are treated as your bookkeeping. Everyone else who messages the shop gets the ordering menu."
+              : "Leave blank and every message is treated as your bookkeeping. Fill it in to let customers order from the same number."}
+          </p>
+        </div>
+        <div>
+          <Label>KRA PIN</Label>
+          <Input
+            value={kraPin}
+            onChange={(e) => setKraPin(e.target.value)}
+            placeholder="P051234567M"
+          />
+          <p className="mt-1.5 text-xs text-slate-500">
+            Printed on eTIMS invoices. Required before sales can be filed with KRA.
+          </p>
         </div>
         <div className="flex items-center gap-3 pt-1">
           <Button onClick={handleSave} disabled={saving}>

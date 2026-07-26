@@ -5,8 +5,11 @@ import { createHmac, timingSafeEqual } from "crypto";
 // authenticated HTTP round-trip back into our own app.
 import { serverTransactionAI } from "@/lib/ai/server";
 import { adminDb } from "@/lib/firebase-admin";
+import { normalizeMsisdn } from "@/lib/mpesa/wire";
+import { getProfile } from "@/lib/server/shop-repo";
+import { handleShoppingMessage } from "@/lib/server/shopping";
 import type { NewTransaction } from "@/lib/data/transactions";
-import type { ParsedTransaction } from "@/types";
+import type { BusinessProfile, ParsedTransaction } from "@/types";
 
 /**
  * Verifies the X-Hub-Signature-256 header the Go WhatsApp server signs
@@ -59,6 +62,26 @@ async function getBusinessUidForPhone(phone?: string): Promise<string> {
     console.error("[ChatBooks Webhook] Error finding business UID:", error, phone);
     return "demo-business";
   }
+}
+
+/**
+ * Decides whether an inbound message is the owner doing bookkeeping or a
+ * customer shopping — the single fork that lets one WhatsApp number serve
+ * both.
+ *
+ * Fails safe towards bookkeeping: with no `ownerPhone` on the profile, every
+ * message is the owner's, exactly as it behaved before ordering existed. The
+ * alternative default would turn a shopkeeper's "sold rice 1500" into a
+ * confused catalog listing.
+ */
+function isOwnerMessage(profile: BusinessProfile | null, phone?: string): boolean {
+  const ownerPhone = profile?.ownerPhone;
+  if (!ownerPhone) return true;
+  if (!phone) return true;
+
+  const normalizedOwner = normalizeMsisdn(ownerPhone) ?? ownerPhone.replace(/\D/g, "");
+  const normalizedSender = normalizeMsisdn(phone) ?? phone.replace(/\D/g, "");
+  return normalizedOwner === normalizedSender;
 }
 
 function formatCurrency(amount: number, currency = "USD"): string {

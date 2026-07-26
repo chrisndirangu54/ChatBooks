@@ -11,6 +11,8 @@ import { Topbar } from "@/components/dashboard/Topbar";
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Overview",
   "/dashboard/chat": "WhatsApp Chat",
+  "/dashboard/products": "Products",
+  "/dashboard/orders": "Orders",
   "/dashboard/transactions": "Transactions",
   "/dashboard/reports": "Reports",
   "/dashboard/settings": "Settings",
