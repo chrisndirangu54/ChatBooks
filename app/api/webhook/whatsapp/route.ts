@@ -38,18 +38,27 @@ function verifySignature(rawBody: string, header: string | null): boolean {
  * In a production multi-tenant system, you would look up by phone number
  * or a stored mapping of whatsapp_phone → business uid.
  */
-async function getBusinessUidForPhone(phone?: string): Promise<string | null> {
-  // Future: implement a businesses/{uid}.whatsapp_phone lookup here
-  // For now we use the single registered business (demo / single-tenant mode)
+async function getBusinessUidForPhone(phone?: string): Promise<string> {
   try {
     const snapshot = await adminDb.collection("businesses").limit(1).get();
     if (!snapshot.empty) {
       return snapshot.docs[0].id;
     }
+    // Demo mode: auto-create a fallback business so WhatsApp messages always save
+    const demoRef = adminDb.collection("businesses").doc("demo-business");
+    const demoDoc = await demoRef.get();
+    if (!demoDoc.exists) {
+      await demoRef.set({
+        name: "Demo Business",
+        currency: "USD",
+        createdAt: Date.now(),
+      });
+    }
+    return demoRef.id;
   } catch (error) {
     console.error("[ChatBooks Webhook] Error finding business UID:", error, phone);
+    return "demo-business";
   }
-  return null;
 }
 
 function formatCurrency(amount: number, currency = "USD"): string {

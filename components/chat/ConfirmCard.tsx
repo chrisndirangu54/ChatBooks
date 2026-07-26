@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 
 const CATEGORIES = ["sales", "inventory", "transport", "rent", "utilities", "wages", "other"];
+const CURRENCIES = ["USD", "KES", "NGN", "GHS", "UGX", "TZS", "ZAR", "EUR", "GBP"];
 
 export function ConfirmCard({
   parsed,
@@ -21,8 +22,13 @@ export function ConfirmCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(parsed);
+  const displayCurrency = parsed.currency || currency;
 
   if (editing) {
+    const currencyOptions = CURRENCIES.includes(draft.currency || currency)
+      ? CURRENCIES
+      : [draft.currency || currency, ...CURRENCIES];
+
     return (
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="mb-3 text-sm font-medium text-slate-700">Edit before saving</p>
@@ -34,11 +40,25 @@ export function ConfirmCard({
             <option value="sale">Sale</option>
             <option value="expense">Expense</option>
           </Select>
-          <Input
-            type="number"
-            value={draft.amount}
-            onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value) })}
-          />
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              className="flex-1"
+              value={draft.amount}
+              onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value) })}
+            />
+            <Select
+              className="w-24"
+              value={draft.currency || currency}
+              onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
+            >
+              {currencyOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </div>
           <Select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -65,10 +85,15 @@ export function ConfirmCard({
       <p className="text-sm text-slate-700">
         I think this is a{" "}
         <span className="font-semibold">{parsed.type === "sale" ? "sale" : "expense"}</span> of{" "}
-        <span className="font-semibold">{formatCurrency(parsed.amount, currency)}</span> for{" "}
+        <span className="font-semibold">{formatCurrency(parsed.amount, displayCurrency)}</span> for{" "}
         <span className="font-semibold capitalize">{parsed.category}</span>
         {parsed.note ? ` (${parsed.note})` : ""}. Save it?
       </p>
+      {parsed.currency && parsed.currency !== currency && (
+        <p className="mt-1 text-xs text-amber-600">
+          Detected {parsed.currency}, but your business currency is {currency}. Edit if this needs converting.
+        </p>
+      )}
       <div className="mt-3 flex gap-2">
         <Button size="sm" onClick={() => onConfirm(parsed)}>
           Save

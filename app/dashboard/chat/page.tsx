@@ -164,12 +164,20 @@ export default function ChatPage() {
     if (!user) return;
     // eslint-disable-next-line react-hooks/purity -- event handler, not render; Date.now() here is a false positive (handleSend has the same pattern and isn't flagged)
     const savedAt = Date.now();
+    // Transactions assume one currency per business — when a receipt was read
+    // in a different currency, keep that visible in the note rather than
+    // silently reformatting the amount under the business's default currency.
+    const note =
+      parsed.currency && parsed.currency !== currency
+        ? `${parsed.note} (${parsed.currency})`.trim()
+        : parsed.note;
+
     if (editId) {
       await updateTransaction(user.uid, editId, {
         type: parsed.type,
         amount: parsed.amount,
         category: parsed.category,
-        note: parsed.note,
+        note,
         confidence: 1,
       });
       pushBot("Updated ✅");
@@ -178,7 +186,7 @@ export default function ChatPage() {
         type: parsed.type,
         amount: parsed.amount,
         category: parsed.category,
-        note: parsed.note,
+        note,
         source: receiptUrl ? "receipt" : "chat",
         confidence: 1,
         createdAt: savedAt,
@@ -202,9 +210,12 @@ export default function ChatPage() {
         uploadReceipt(user.uid, file),
       ]);
       pushBot(
-        `I see ${formatCurrency(parsed.amount, currency)} from ${parsed.note.replace("Receipt from ", "")}. Save as expense?`,
+        `I see ${formatCurrency(parsed.amount, parsed.currency || currency)} from ${parsed.note.replace("Receipt from ", "")}. Save as expense?`,
       );
       pushConfirm(parsed, undefined, receiptUrl);
+    } catch (error) {
+      console.error("Receipt OCR failed:", error);
+      pushBot("I couldn't read that receipt. Try typing the amount instead, e.g. \"Bought supplies 2300\".");
     } finally {
       setSending(false);
     }
