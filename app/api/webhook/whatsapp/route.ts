@@ -291,6 +291,60 @@ export async function POST(req: Request) {
       });
     }
 
+    // ── 3. Handle Inventory & Catalog Queries ────────────────────────────────
+    const cleanText = (text || "").trim().toLowerCase();
+    const isInventoryQuery =
+      /^(inventory|stock|available|what is available|products|catalog|menu|items|what do you have|show inventory|check stock|list)$/i.test(
+        cleanText
+      ) ||
+      cleanText.includes("inventory") ||
+      cleanText.includes("available stock");
+
+    if (isInventoryQuery) {
+      const productsSnapshot = await adminDb
+        .collection("businesses")
+        .doc(targetUid)
+        .collection("products")
+        .get();
+
+      if (productsSnapshot.empty) {
+        return NextResponse.json({
+          success: true,
+          reply_text: [
+            `📦 *Available Inventory & Catalog*`,
+            ``,
+            `No active products found in your catalog yet.`,
+            `💡 Add products in your ChatBooks dashboard at /dashboard/products to track stock!`,
+          ].join("\n"),
+        });
+      }
+
+      const catalogLines: string[] = [];
+      let idx = 1;
+      productsSnapshot.forEach((doc) => {
+        const p = doc.data();
+        if (p.active !== false) {
+          const priceStr = formatCurrency(p.price || 0, currency);
+          const unitStr = p.unit ? ` (${p.unit})` : "";
+          const stockStr = p.stock !== undefined ? ` | 📊 Stock: ${p.stock}` : "";
+          catalogLines.push(`${idx}. *${p.name}* — ${priceStr}${unitStr}${stockStr}`);
+          idx++;
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        reply_text: [
+          `📦 *Available Inventory & Catalog*:`,
+          ``,
+          ...catalogLines,
+          ``,
+          `💡 *Log a sale:* Reply e.g. "Sold 2 ${productsSnapshot.docs[0]?.data()?.name || "items"} 1500"`,
+          `💡 *Check stock:* Reply "inventory" anytime to see updated stock levels.`,
+        ].join("\n"),
+      });
+    }
+
     // ── 4. Parse the transaction if not already done by the caller ──────────
     let transactionToSave: ParsedTransaction | null = parsedTransactionInput ?? null;
 
@@ -301,12 +355,55 @@ export async function POST(req: Request) {
     if (!transactionToSave) {
       return NextResponse.json({
         success: false,
-        reply_text:
-          'I couldn\'t detect a transaction amount. Try something like "Sold rice 1500" or attach a receipt photo.',
+        reply_text: [
+          `I couldn't detect a transaction amount.`,
+          ``,
+          `💡 *Examples you can try:*`,
+          `• "Sold 2 shoes 4500"`,
+          `• "Paid 1200 for electricity bill"`,
+          `• Reply "inventory" to see available stock`,
+          `• Attach a receipt photo`,
+        ].join("\n"),
       });
     }
 
-    // ── 5. Save to Firestore via the Admin SDK ───────────────────────────────
+    // ── 5. Inventory Deduction for Sales ──────────────────────────────────────
+    let matchedProductStockNotice = "";
+    if (transactionToSave.type === "sale" && (transactionToSave.note || text)) {
+      try {
+        const productsSnapshot = await adminDb
+          .collection("businesses")
+          .doc(targetUid)
+          .collection("products")
+          .get();
+
+        const noteLower = (transactionToSave.note + " " + (text || "")).toLowerCase();
+        for (const doc of productsSnapshot.docs) {
+          const product = doc.data();
+          if (product.name && noteLower.includes(product.name.toLowerCase())) {
+            let qty = 1;
+            const matchQty = noteLower.match(/(\d+)\s*(pairs?|pcs?|items?|units?|kg|bags?)?/);
+            if (matchQty && matchQty[1]) {
+              const parsedQty = parseInt(matchQty[1], 10);
+              if (parsedQty > 0 && parsedQty < 1000) qty = parsedQty;
+            }
+
+            if (product.stock !== undefined && typeof product.stock === "number") {
+              const newStock = Math.max(0, product.stock - qty);
+              await doc.ref.update({ stock: newStock });
+              matchedProductStockNotice = `\n📦 Inventory updated: *${product.name}* stock is now *${newStock}* remaining.`;
+            } else {
+              matchedProductStockNotice = `\n📦 Matched item: *${product.name}*`;
+            }
+            break;
+          }
+        }
+      } catch (err) {
+        console.error("[ChatBooks Webhook] Error updating product stock:", err);
+      }
+    }
+
+    // ── 6. Save to Firestore via the Admin SDK ───────────────────────────────
     const source: NewTransaction["source"] = imageUrl || isReceipt ? "receipt" : "chat";
     const transactionData: NewTransaction = {
       type: transactionToSave.type,
@@ -324,14 +421,14 @@ export async function POST(req: Request) {
       .collection("transactions")
       .add(transactionData);
 
-    // ── 6. Build friendly confirmation reply with Undo prompt ─────────────────
+    // ── 7. Build friendly confirmation reply with Inventory & Undo prompts ────
     const formattedType = transactionToSave.type === "sale" ? "📈 Sale" : "📉 Expense";
     const formattedAmount = formatCurrency(transactionToSave.amount, currency);
     const noteText = transactionToSave.note ? ` — ${transactionToSave.note}` : "";
     const categoryText = transactionToSave.category ? `\n📂 Category: ${transactionToSave.category}` : "";
 
     const replyText = [
-      `Saved ✅ ${formattedType}: ${formattedAmount}${noteText}${categoryText}`,
+      `Saved ✅ ${formattedType}: ${formattedAmount}${noteText}${categoryText}${matchedProductStockNotice}`,
       ``,
       `📊 Reflected live in your ChatBooks dashboard!`,
       `💡 Made a mistake? Reply "undo" to remove this entry.`,

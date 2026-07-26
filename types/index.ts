@@ -55,6 +55,8 @@ export interface Product {
   createdAt: number;
   /** KRA item classification code. Required by eTIMS; blank until set. */
   itemClassificationCode?: string;
+  /** Quantity in stock. Optional for services/untracked inventory. */
+  stock?: number;
   taxCategory: TaxCategory;
   /**
    * Units on hand.
