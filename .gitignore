@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-# .env*
+# env files — these hold service-account keys, the M-Pesa passkey, and the
+# Anthropic key. Never commit them. The .example files carry no real values and
+# are deliberately exempt so new contributors still get the template.
+.env*
+!.env*.example
 
 # vercel
 .vercel
