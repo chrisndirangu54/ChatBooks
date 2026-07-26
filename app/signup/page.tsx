@@ -54,13 +54,14 @@ export default function SignupPage() {
         >
           <div>
             <Label htmlFor="name">Your name</Label>
-            <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Amina Yusuf" />
+            <Input id="name" required autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Amina Yusuf" />
           </div>
           <div>
             <Label htmlFor="businessName">Business name</Label>
             <Input
               id="businessName"
               required
+              autoComplete="organization"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
               placeholder="Amina's Grocery"
@@ -72,6 +73,7 @@ export default function SignupPage() {
               id="email"
               type="email"
               required
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@business.com"
@@ -83,6 +85,7 @@ export default function SignupPage() {
               id="password"
               type="password"
               required
+              autoComplete="new-password"
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}

@@ -42,6 +42,12 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // The inline script below adds `motion-ready` to this element before React
+      // hydrates, so the DOM's class list legitimately differs from the server's.
+      // Without this, React logs a hydration mismatch on every page load. It
+      // scopes to this element's own attributes only — one level deep, not the
+      // subtree — so real mismatches inside the app still surface.
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
         <script dangerouslySetInnerHTML={{ __html: MOTION_READY }} />

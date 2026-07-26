@@ -276,7 +276,10 @@ export default function LandingPage() {
               alt="A chat line moving through four stages: typed, structured, totalled, then turned into a credit file"
               width={960}
               height={120}
-              className="mx-auto mt-8 hidden w-full max-w-xl sm:block"
+              // h-auto alongside w-full: next/image warns when CSS changes one
+              // dimension without the other, and it keeps the aspect ratio if a
+              // future preflight stops setting height:auto on images.
+              className="mx-auto mt-8 hidden h-auto w-full max-w-xl sm:block"
             />
           </Reveal>
 
@@ -462,7 +465,7 @@ export default function LandingPage() {
                 alt="A chat message resolving into structured figures, a rising chart, and an approved credit file"
                 width={480}
                 height={360}
-                className="mx-auto hidden w-full max-w-sm animate-float md:block"
+                className="mx-auto hidden h-auto w-full max-w-sm animate-float md:block"
               />
             </div>
           </div>
