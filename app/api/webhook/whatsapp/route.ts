@@ -150,7 +150,41 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 2. Parse the transaction if not already done by the caller ──────────
+    // ── 2. Handle "undo" / "delete last" command ────────────────────────────
+    if (text && /^(undo|delete|delete last|remove|remove last|cancel)$/i.test(text.trim())) {
+      const lastQuery = await adminDb
+        .collection("businesses")
+        .doc(targetUid)
+        .collection("transactions")
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
+
+      if (!lastQuery.empty) {
+        const docToDelete = lastQuery.docs[0];
+        const data = docToDelete.data();
+        await docToDelete.ref.delete();
+
+        const typeStr = data.type === "sale" ? "📈 Sale" : "📉 Expense";
+        const amountStr = formatCurrency(data.amount || 0, currency);
+        const noteStr = data.note ? ` (${data.note})` : "";
+
+        return NextResponse.json({
+          success: true,
+          reply_text: [
+            `Removed 🗑️ ${typeStr}: ${amountStr}${noteStr}`,
+            `This transaction has been deleted from your ChatBooks records.`,
+          ].join("\n"),
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        reply_text: "No recent transactions found to remove.",
+      });
+    }
+
+    // ── 3. Parse the transaction if not already done by the caller ──────────
     let transactionToSave: ParsedTransaction | null = parsedTransactionInput ?? null;
 
     if (!transactionToSave && text) {
@@ -165,7 +199,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── 3. Save to Firestore via the Admin SDK ───────────────────────────────
+    // ── 4. Save to Firestore via the Admin SDK ───────────────────────────────
     const source: NewTransaction["source"] = imageUrl || isReceipt ? "receipt" : "chat";
     const transactionData: NewTransaction = {
       type: transactionToSave.type,
@@ -183,13 +217,17 @@ export async function POST(req: Request) {
       .collection("transactions")
       .add(transactionData);
 
-    // ── 4. Build confirmation reply ──────────────────────────────────────────
+    // ── 5. Build friendly confirmation reply with Undo prompt ─────────────────
     const formattedType = transactionToSave.type === "sale" ? "📈 Sale" : "📉 Expense";
     const formattedAmount = formatCurrency(transactionToSave.amount, currency);
     const noteText = transactionToSave.note ? ` — ${transactionToSave.note}` : "";
+    const categoryText = transactionToSave.category ? `\n📂 Category: ${transactionToSave.category}` : "";
+
     const replyText = [
-      `Saved ✅ ${formattedType}: ${formattedAmount}${noteText}`,
-      `Reflected live in your ChatBooks dashboard!`,
+      `Saved ✅ ${formattedType}: ${formattedAmount}${noteText}${categoryText}`,
+      ``,
+      `📊 Reflected live in your ChatBooks dashboard!`,
+      `💡 Made a mistake? Reply "undo" to remove this entry.`,
     ].join("\n");
 
     console.log(
