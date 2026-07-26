@@ -29,6 +29,67 @@ Firebase config lives in `.env.local` (already set up for the `paymesh-c9611` pr
    ```
    Rules restrict every business's data and receipt files to that business's own signed-in user (`firestore.rules`, `storage.rules`).
 
+## Customer ordering over WhatsApp
+
+The same WhatsApp number does two jobs. A message from the owner's own number
+is bookkeeping, exactly as before; a message from anyone else is a customer
+shopping. The fork is a single field — **Settings → Your WhatsApp number**.
+Leave it blank and nothing changes: every message stays bookkeeping.
+
+A customer's whole session is text, sized for a feature phone:
+
+```
+hi          → numbered catalog of active products
+3           → adds item 3
+3x2         → adds two of item 3
+cart        → review
+pay         → M-Pesa STK push; enter PIN on the handset
+```
+
+On payment, one Firestore transaction marks the order paid *and* writes the
+matching sale to the books, so the two can't drift apart. Daraja retries any
+callback it doesn't get a 200 for, so that step re-reads the order status and
+does nothing if it has already run.
+
+### Setup
+
+1. **Products** → add your catalog. The price you enter is what the customer
+   pays: Kenyan shelf prices are VAT-inclusive, so VAT is derived out of it.
+2. **Settings** → set your WhatsApp number and KRA PIN.
+3. Fill in the `MPESA_*` variables in `.env.local` (see `.env.local.example`).
+   Register the callback URL with the token on it:
+   `https://your-host/api/mpesa/callback?token=…`
+4. Redeploy the Firestore rules — orders, products, sessions and the M-Pesa
+   checkout index are all new.
+
+### eTIMS
+
+Filing sits behind the `EtimsProvider` interface in `lib/etims/provider.ts`.
+Only the stub is implemented: it builds the complete KRA payload, logs it, and
+the dashboard labels those orders **Simulated** rather than Filed. Nothing is
+sent to KRA. Once you're onboarded, add a provider that POSTs `invoice` to your
+OSCU/VSCU endpoint and select it with `ETIMS_PROVIDER` — the payment path
+doesn't change.
+
+Two things in `lib/etims/mapping.ts` are taxpayer-specific and must be checked
+against the code list issued with your onboarding: the tax-type letters
+(`A`/`B`/`C`) and each product's item classification code. A wrong code is a
+misfiled return, so an order with no classification code refuses to file
+instead of guessing.
+
+## Tests
+
+```bash
+npm test
+```
+
+Runs the pure modules — VAT math, the shopping state machine, the Daraja wire
+format and callback parser, the eTIMS mapping — under `node --test`. No
+Firebase emulator or Daraja sandbox account needed: every one of those modules
+returns the side effect it wants as data and lets a route handler perform it,
+which is what keeps a state machine that can charge a customer safe to run in
+a test.
+
 ## What's real vs. mocked
 
 | Layer | Status |
@@ -38,6 +99,8 @@ Firebase config lives in `.env.local` (already set up for the `paymesh-c9611` pr
 | AI intent parsing (`src/lib/ai`) | Rule-based mock behind a `TransactionAIProvider` interface — swap in a Claude/OpenAI structured tool call without touching call sites |
 | Receipt OCR (`src/lib/ocr`) | Mock behind a `ReceiptOCRProvider` interface — swap in Google Vision the same way |
 | PDF reports | Real, generated client-side with jsPDF |
+| M-Pesa STK push (`lib/mpesa`) | Real Daraja calls; point `MPESA_ENV` at sandbox until you're ready |
+| eTIMS filing (`lib/etims`) | Stub behind an `EtimsProvider` interface — payload is built and logged, nothing reaches KRA |
 
 ## Structure
 
